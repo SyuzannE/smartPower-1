@@ -1,0 +1,62 @@
+{
+  "data": [
+    {
+      "serial_number": "serial_number0",
+      "type": "GPRS",
+      "commission_date": "2023-07-03T00:00:00Z",
+      "inverter": {
+        "serial": "serial1",
+        "status": "NORMAL",
+        "last_online": "2023-07-14T20:14:20Z",
+        "last_updated": "2023-07-14T22:02:02Z",
+        "commission_date": "2023-07-03T00:00:00Z",
+        "info": {
+          "battery_type": "LITHIUM",
+          "battery": {
+            "nominal_capacity": 160,
+            "nominal_voltage": 51.2
+          },
+          "model": "GIV-HY3.6",
+          "max_charge_rate": 3600
+        },
+        "warranty": {
+          "type": "Standard",
+          "expiry_date": "2028-07-03T00:00:00Z"
+        },
+        "firmware_version": {
+          "ARM": 909,
+          "DSP": 909
+        },
+        "connections": {
+          "batteries": [
+            {
+              "serial": "serial_bat",
+              "firmware_version": "3012",
+              "capacity": {
+                "full": 167.4,
+                "design": 160
+              },
+              "cell_count": 16,
+              "has_usb": false
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "links": {
+    "first": "https://api.givenergy.cloud/v1/communication-device?page=1",
+    "last": "https://api.givenergy.cloud/v1/communication-device?page=1",
+    "prev": null,
+    "next": null
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "path": "https://api.givenergy.cloud/v1/communication-device",
+    "per_page": 15,
+    "to": 1,
+    "total": 1
+  }
+}
