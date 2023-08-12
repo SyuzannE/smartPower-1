@@ -13,14 +13,24 @@ TODO:
     - make services use example data sets (ability to run offline on same json files)
     - if the service needs to be triggered 2 to 3 times a day, how to design the architecture
     - the service needs to set when it next needs to run.
-    - could trigger a cronjob programatically
     - trigger the service every 5/15/30 minutes to check if it should run. TICK
-    - lock the function out with a loop until the time wanted comes around
 
     - get inverter specs (battery capacity, max grid charge)
     - calculate how many hours would be required to charge the batterys to full from empty
     - filter for next days data
     - find x many cheapest time slots for that day
+
+Charging logic
+    - e.g. 10.10pm, 65% charge, cheapest rate is following day between lunch 1.30 - 2, and 2.30 - 3.
+    - what would be the expected battery charge by the time we get to 1.30 tomorrow
+    - how long would it take to charge to full
+    - if additional charge is going to be needed in order to get to the cheapest rate, what cheaper rates are available before hand
+    - perhaps better to calculate the latest estimated time that will need to charge from grid, factor in time of year, day of week, solar estimation etc
+    - compare with agile rates
+
+    - get the last 4 weekday electricity houe usage and average per half hour slot
+    - e.g. the last 4 Tuesday usage in half hour slots
+    - 2 week holiday is going to produce outliers. how to deal with this?
 """
 import os
 
@@ -31,19 +41,11 @@ offline_debug = True if os.environ.get("OFFLINE_DEBUG") == '1' else False
 
 giv_energy = GivEnergy(offline_debug, os.environ.get("GE_API_KEY"))
 
-system_specifications = giv_energy.system_specs
+giv_energy.extract_system_spec()
 
-giv_energy.battery_capacity_voltage = system_specifications['data'][0]['inverter']['info']['battery'][
-    'nominal_voltage']
-giv_energy.battery_capacity_amp_h = system_specifications['data'][0]['inverter']['info']['battery'][
-    'nominal_capacity']
-giv_energy.battery_capacity_wh = giv_energy.battery_capacity_voltage * giv_energy.battery_capacity_amp_h
+print(giv_energy.system_specs)
 
-giv_energy.max_charge_rate = system_specifications['data'][0]['inverter']['info']['max_charge_rate']
-giv_energy.house_avg_base_load = 300
 
-hours_to_charge = giv_energy.battery_capacity_wh / (giv_energy.max_charge_rate - giv_energy.house_avg_base_load)
-print(round(hours_to_charge, 2))
 
 octopus = Octopus(offline_debug, os.environ.get("OCTOPUS_API_KEY"))
 agile_data = octopus.get_tariff_data()
