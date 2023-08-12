@@ -9,7 +9,8 @@ class GivEnergy:
         self.offline_debug = offline_debug
         self.base_url = 'https://api.givenergy.cloud'
         self.api_key = api_key
-        self.system_specs = self.get_system_specifications()
+        self.system_specs_raw = self.get_system_specifications()
+        self.system_specs = {}
         self.inverter_serial_number = self.extract_inverter_serial_number()
 
     def get_system_specifications(self):
@@ -29,13 +30,19 @@ class GivEnergy:
                 response = requests.request('GET', url, headers=headers, params=params)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions as error:
+            except requests.exceptions.HTTPError as http_error:
+                raise http_error
+            except requests.exceptions.ConnectionError as connection_error:
+                raise connection_error
+            except requests.exceptions.Timeout as timeout_error:
+                raise timeout_error
+            except requests.exceptions.RequestException as error:
                 raise error
 
     def extract_inverter_serial_number(self):
         # Extract inverter serial number
-        if self.system_specs is not None:
-            return self.system_specs['data'][0]['inverter']['serial']
+        if self.system_specs_raw is not None:
+            return self.system_specs_raw['data'][0]['inverter']['serial']
 
     def get_inverter_systems_data(self):
         if self.offline_debug:
@@ -51,7 +58,13 @@ class GivEnergy:
                 response = requests.request('GET', url, headers=headers)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions as error:
+            except requests.exceptions.HTTPError as http_error:
+                raise http_error
+            except requests.exceptions.ConnectionError as connection_error:
+                raise connection_error
+            except requests.exceptions.Timeout as timeout_error:
+                raise timeout_error
+            except requests.exceptions.RequestException as error:
                 raise error
 
     def get_inverter_settings(self):
@@ -67,7 +80,13 @@ class GivEnergy:
                 response = requests.request('GET', url, headers=headers)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions as error:
+            except requests.exceptions.HTTPError as http_error:
+                raise http_error
+            except requests.exceptions.ConnectionError as connection_error:
+                raise connection_error
+            except requests.exceptions.Timeout as timeout_error:
+                raise timeout_error
+            except requests.exceptions.RequestException as error:
                 raise error
 
     def read_inverter_setting(self, setting):
@@ -84,7 +103,13 @@ class GivEnergy:
                 response = requests.request('POST', url, headers=headers)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions as error:
+            except requests.exceptions.HTTPError as http_error:
+                raise http_error
+            except requests.exceptions.ConnectionError as connection_error:
+                raise connection_error
+            except requests.exceptions.Timeout as timeout_error:
+                raise timeout_error
+            except requests.exceptions.RequestException as error:
                 raise error
 
     def update_inverter_setting(self, setting, value):
@@ -99,8 +124,34 @@ class GivEnergy:
                 response = requests.request('POST', url, headers=headers, json=payload)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions as error:
+            except requests.exceptions.HTTPError as http_error:
+                raise http_error
+            except requests.exceptions.ConnectionError as connection_error:
+                raise connection_error
+            except requests.exceptions.Timeout as timeout_error:
+                raise timeout_error
+            except requests.exceptions.RequestException as error:
                 raise error
+
+    def extract_system_spec(self):
+        battery_voltage = self.system_specs_raw['data'][0]['inverter']['info']['battery'][
+            'nominal_voltage']
+        battery_capacity_ah = self.system_specs_raw['data'][0]['inverter']['info']['battery'][
+            'nominal_capacity']
+        battery_capacity_wh = battery_voltage * battery_capacity_ah
+        max_charge_rate = self.system_specs_raw['data'][0]['inverter']['info']['max_charge_rate']
+        house_avg_base_load = 300
+
+        hours_to_charge = battery_capacity_wh / (max_charge_rate - house_avg_base_load)
+
+        self.system_specs = {"battery_spec": {"voltage": battery_voltage,
+                                              "amp_hour": battery_capacity_ah,
+                                              "watt_hour": battery_capacity_wh,
+                                              "max_charge_rate_watts": max_charge_rate,
+                                              "hours_to_charge_full": hours_to_charge},
+                             "inverter_spec": {},
+                             "general_spec": {}
+                             }
 
 
 def save_json_file(filename, data):
