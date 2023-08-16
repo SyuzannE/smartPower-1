@@ -14,6 +14,9 @@ class GivEnergy:
         self.inverter_serial_number = self.extract_inverter_serial_number()
 
     def get_system_specifications(self):
+        """
+        https://givenergy.cloud/docs/api/v1#communication-device
+        """
         if self.offline_debug:
             return copy.deepcopy(GivEnergyData.communication_device())
         else:
@@ -45,6 +48,9 @@ class GivEnergy:
             return self.system_specs_raw['data'][0]['inverter']['serial']
 
     def get_inverter_systems_data(self):
+        """
+        https://givenergy.cloud/docs/api/v1#inverter-data-GETinverter--inverter_serial_number--system-data-latest
+        """
         if self.offline_debug:
             pass
         else:
@@ -56,6 +62,37 @@ class GivEnergy:
             }
             try:
                 response = requests.request('GET', url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.HTTPError as http_error:
+                raise http_error
+            except requests.exceptions.ConnectionError as connection_error:
+                raise connection_error
+            except requests.exceptions.Timeout as timeout_error:
+                raise timeout_error
+            except requests.exceptions.RequestException as error:
+                raise error
+
+    def get_energy_usage(self, start_date, end_date):
+        """
+        https://givenergy.cloud/docs/api/v1#energy-flow-data-POSTinverter--inverter_serial_number--energy-flows
+        """
+        if self.offline_debug:
+            pass
+        else:
+            payload = {"start_time": start_date,
+                       "end_time": end_date,
+                       "grouping": 0,
+                       "types": [0, 3, 5]}
+
+            url = f'{self.base_url}/v1/inverter/{self.inverter_serial_number}/energy-flows'
+            headers = {
+                'Authorization': f'Bearer {self.api_key}',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+            try:
+                response = requests.request('POST', url, headers=headers, json=payload)
                 response.raise_for_status()
                 return response.json()
             except requests.exceptions.HTTPError as http_error:
@@ -142,7 +179,7 @@ class GivEnergy:
         max_charge_rate = self.system_specs_raw['data'][0]['inverter']['info']['max_charge_rate']
         house_avg_base_load = 300
 
-        hours_to_charge = battery_capacity_wh / (max_charge_rate - house_avg_base_load)
+        hours_to_charge = round(battery_capacity_wh / (max_charge_rate - house_avg_base_load), 4)
 
         self.system_specs = {"battery_spec": {"voltage": battery_voltage,
                                               "amp_hour": battery_capacity_ah,

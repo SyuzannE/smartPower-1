@@ -1,6 +1,6 @@
 # smartPower
 
-A project that aims to fix the issue of choosing multiple time windows to charge a domestic electrical battery from
+A project that aims to fix the issue of manually choosing multiple time windows daily to charge a domestic electrical battery from
 the grid when on a flexible rate tariff.
 
 The solar - battery controller is a GivEnergy unit. The electrical supplier is Octopus energy
@@ -15,12 +15,17 @@ sensible times to charge the battery
 
 There are multiple factors the device needs to consider in order to select the correct charge window. I believe these
 are;
- - the typical daily electrical usage
- - estimated electrical solar generation
- - remaining battery energy
- - cheapest half hour electrical price
+ - Estimate time to battery depletion by;
+   - the typical daily electrical usage. Average of last x days
+   - estimated electrical solar generation
+     - using an average of the last x days
+     - cloud cover forecast 
+   - remaining battery energy
+ - Compare against cheapest half hour electrical price. Check that it will charge battery to sufficient level
 
-Data will need to be requested from the GivEnergy and Octopus API's.
+Data will need to be requested from the GivEnergy, Octopus and MetOffices DataPoint API's.
 
+Currently, this is a proof of concept.
 Once functional this project can be made into a microservice, it would be nice if it were to communicate its logic daily
 to the user. So the user understands when and why the battery will be charged that day.
+
