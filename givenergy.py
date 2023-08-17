@@ -73,7 +73,7 @@ class GivEnergy:
             except requests.exceptions.RequestException as error:
                 raise error
 
-    def get_energy_usage(self, start_date, end_date):
+    def get_energy_usage(self, start_date, end_date, e_types):
         """
         https://givenergy.cloud/docs/api/v1#energy-flow-data-POSTinverter--inverter_serial_number--energy-flows
         """
@@ -83,7 +83,7 @@ class GivEnergy:
             payload = {"start_time": start_date,
                        "end_time": end_date,
                        "grouping": 0,
-                       "types": [0, 3, 5]}
+                       "types": e_types}
 
             url = f'{self.base_url}/v1/inverter/{self.inverter_serial_number}/energy-flows'
             headers = {
