@@ -36,6 +36,8 @@ from datetime import datetime, timedelta
 import os
 
 from givenergy import GivEnergy, save_json_file
+from analysis import *
+
 from octopus import Octopus
 
 
@@ -49,9 +51,21 @@ def analyse_energy_usage(giv_energy, weeks):
     Get the average of the last 4 weekdays energy usage in half hour slots, for the following day
     """
     previous_dates = get_x_weeks_previous_weekday_dates(weeks)
-    data = get_energy_usage_days(giv_energy, previous_dates)
-    avg_half_hour_kwh = avg_half_hour_consumption_data(data)
-    return avg_half_hour_kwh
+    data = get_energy_usage_days(giv_energy, previous_dates, [0, 3, 5])
+    avg_half_hour_kwh, all_days = avg_half_hour_consumption_data(data, weeks)
+    return {"avg": avg_half_hour_kwh,
+            "all": all_days}
+
+
+def analyse_solar_production(giv_energy, days):
+    """
+    Get the average of the last x days solar production in half hour slots
+    """
+    previous_dates = get_x_previous_days_dates(days)
+    data = get_energy_usage_days(giv_energy, previous_dates, [0, 1, 2])
+    avg_half_hour_kwh, all_days = avg_half_hour_consumption_data(data, days)
+    return {"avg": avg_half_hour_kwh,
+            "all": all_days}
 
 
 def get_x_weeks_previous_weekday_dates(weeks):
@@ -71,32 +85,47 @@ def get_x_weeks_previous_weekday_dates(weeks):
     return previous_dates
 
 
-def get_energy_usage_days(giv_energy, previous_dates):
+def get_x_previous_days_dates(days):
+    """
+    Get the dates for the previous x days
+    """
+
+    today = datetime.today()
+    previous_dates = []
+    # Get the 4 previous dates
+    for i in range(days):
+        previous_day = today - timedelta(days=i)
+        previous_dates.append({'start_date': previous_day.strftime('%Y-%m-%d'),
+                               'end_date': (previous_day + timedelta(days=1)).strftime('%Y-%m-%d')})
+    return previous_dates
+
+
+def get_energy_usage_days(giv_energy, previous_dates, e_types):
     """
     Request energy usage data for the given dates
     """
     data = []
     for dates in previous_dates:
         # filter the data
-        raw_data = giv_energy.get_energy_usage(dates['start_date'], dates['end_date'])
+        raw_data = giv_energy.get_energy_usage(dates['start_date'], dates['end_date'], e_types)
         data.append(raw_data['data'])
     return data
 
 
-def avg_half_hour_consumption_data(data):
+def avg_half_hour_consumption_data(data, weeks):
     """
     Average each half hour time slot between the number of weeks
     """
-    sums = []
+    all_days = []
     for day in data:
         day.popitem()
         day_total = []
         for half_hour in day.values():
             day_total.append(sum(half_hour["data"].values()))
-        sums.append(day_total)
+        all_days.append(day_total)
 
-    avg_consumption_kwh_per_half_hour = [round(sum(values), 4) for values in zip(*sums)]
-    return avg_consumption_kwh_per_half_hour
+    avg_consumption_kwh_per_half_hour = [round(sum(values) / weeks, 4) for values in zip(*all_days)]
+    return avg_consumption_kwh_per_half_hour, all_days
 
 
 if __name__ == '__main__':
@@ -111,8 +140,10 @@ if __name__ == '__main__':
     # get average energy consumption
     """
     NOTE: this does not currently take into consideration the current time. Fix this
+    at the moment its taking the average half hour slot of the previous 4 days,
+    it needs to factor in the average daily usage, average daily weekday usage and then bias against the half hour time slots
     """
-    avg_consumption_kwh_per_half_hour = analyse_energy_usage(giv_energy, 5)
+    house_consumption = analyse_energy_usage(giv_energy, 4)
 
     # get watt hour capacity remaining in battery
     inverter_data = giv_energy.get_inverter_systems_data()
@@ -122,13 +153,14 @@ if __name__ == '__main__':
     # get weather forecast in half hour slots
 
     # get average production of panels in half hour slots for last 30 days
+    solar_production = analyse_solar_production(giv_energy, 30)
 
     # sum solar data to historic consumption data
 
     # compare against half hour historic time slot data to get an estimated hours left until depleted, tolerance this?
     total_energy_consumed = 0
     no_half_hour_slots = 0
-    for energy in avg_consumption_kwh_per_half_hour:
+    for energy in house_consumption["avg"]:
         if total_energy_consumed + energy < battery_watt_hours_remaining:
             total_energy_consumed += energy
             no_half_hour_slots += 1
@@ -141,6 +173,8 @@ if __name__ == '__main__':
 
     # octopus = Octopus(offline_debug, os.environ.get("OCTOPUS_API_KEY"))
     # agile_data = octopus.get_tariff_data()
+
+    analyse_data(house_consumption, solar_production)
 
     print('complete')
     # data = giv_energy.get_inverter_systems_data()
