@@ -1,7 +1,7 @@
 import copy
 import requests
 
-from example_responses.example_data_handler import *
+from project.example_responses.example_data_handler import *
 
 
 class GivEnergy:
