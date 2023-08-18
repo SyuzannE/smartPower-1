@@ -2,14 +2,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def analyse_data(home_consumption, solar_production):
+def analyse_data(df_home_consumption, df_solar_production):
     # plot_multiple_kwh_day(all_days)
 
     # consumption
-    calculate_totals(home_consumption, "power usage")
+    calculate_totals(df_home_consumption, "power usage")
 
     # solar
-    calculate_totals(solar_production, "solar production")
+    calculate_totals(df_solar_production, "solar production")
 
 
 def calculate_totals(data, type):

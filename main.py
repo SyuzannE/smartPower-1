@@ -35,10 +35,12 @@ Charging logic
 from datetime import datetime, timedelta
 import os
 
-from givenergy import GivEnergy, save_json_file
-from analysis import *
+import pandas as pd
 
-from octopus import Octopus
+from project.givenergy import GivEnergy, save_json_file
+from tools.analysis import *
+
+from project.octopus import Octopus
 
 
 def logic_index_to_time(index):
@@ -53,8 +55,8 @@ def analyse_energy_usage(giv_energy, weeks):
     previous_dates = get_x_weeks_previous_weekday_dates(weeks)
     data = get_energy_usage_days(giv_energy, previous_dates, [0, 3, 5])
     avg_half_hour_kwh, all_days = avg_half_hour_consumption_data(data, weeks)
-    return {"avg": avg_half_hour_kwh,
-            "all": all_days}
+    df_usage = add_to_df(avg_half_hour_kwh, all_days)
+    return df_usage
 
 
 def analyse_solar_production(giv_energy, days):
@@ -64,14 +66,29 @@ def analyse_solar_production(giv_energy, days):
     previous_dates = get_x_previous_days_dates(days)
     data = get_energy_usage_days(giv_energy, previous_dates, [0, 1, 2])
     avg_half_hour_kwh, all_days = avg_half_hour_consumption_data(data, days)
-    return {"avg": avg_half_hour_kwh,
-            "all": all_days}
+    df_usage = add_to_df(avg_half_hour_kwh, all_days)
+    return df_usage
+
+
+def add_to_df(avg_half_hour_kwh, all_days):
+    # Create dataframe
+    df_usage = pd.DataFrame(all_days).T
+    # Add average column
+    df_usage["avg"] = avg_half_hour_kwh
+    # Add a time column as integers
+    df_usage["timer"] = [x*0.5 for x in range(df_usage.shape[0])]
+    # Filter df based from time now and time column
+    time = datetime.today()
+    hours, mins = int(time.strftime('%H')) + 1, int(time.strftime('%M'))
+    if mins > 30: hours += 0.5
+    df_usage = df_usage.loc[df_usage['timer'] > hours]
+    return df_usage
 
 
 def get_x_weeks_previous_weekday_dates(weeks):
     """
-    Using tomorrow's day of the week, return the previous x weeks dates for that same weekday
-    e.g. Saturday today, so get the previous 4 Sunday dates
+    Using today's and tomorrow's day of the week, return the previous x weeks dates for that same weekday
+    e.g. Saturday today, so get the previous 4 Saturday and Sunday dates
     """
     today = datetime.today()
     tomorrow = today + timedelta(days=1)
@@ -80,7 +97,7 @@ def get_x_weeks_previous_weekday_dates(weeks):
     # Get the 4 previous dates
     for i in range(weeks):
         weekday_date = last_same_weekday - timedelta(days=i * 7)
-        previous_dates.append({'start_date': weekday_date.strftime('%Y-%m-%d'),
+        previous_dates.append({'start_date': (weekday_date + timedelta(days=-1)).strftime('%Y-%m-%d'),
                                'end_date': (weekday_date + timedelta(days=1)).strftime('%Y-%m-%d')})
     return previous_dates
 
@@ -89,14 +106,13 @@ def get_x_previous_days_dates(days):
     """
     Get the dates for the previous x days
     """
-
-    today = datetime.today()
+    day_b4_yesterday = datetime.today() - timedelta(days=2)
     previous_dates = []
     # Get the 4 previous dates
     for i in range(days):
-        previous_day = today - timedelta(days=i)
+        previous_day = day_b4_yesterday - timedelta(days=i)
         previous_dates.append({'start_date': previous_day.strftime('%Y-%m-%d'),
-                               'end_date': (previous_day + timedelta(days=1)).strftime('%Y-%m-%d')})
+                               'end_date': (previous_day + timedelta(days=2)).strftime('%Y-%m-%d')})
     return previous_dates
 
 
@@ -137,13 +153,12 @@ if __name__ == '__main__':
     # get renewable system specs
     giv_energy.extract_system_spec()
 
+    # # compare inverter time to server time and unify. Manually correct, inverter behind by 1 hour, says 12, actually 1
+    # inverter_time = giv_energy.system_specs_raw['data'][0]['inverter']['last_updated']
+    # now = datetime.today()
+
     # get average energy consumption
-    """
-    NOTE: this does not currently take into consideration the current time. Fix this
-    at the moment its taking the average half hour slot of the previous 4 days,
-    it needs to factor in the average daily usage, average daily weekday usage and then bias against the half hour time slots
-    """
-    house_consumption = analyse_energy_usage(giv_energy, 4)
+    df_house_consumption = analyse_energy_usage(giv_energy, 4)
 
     # get watt hour capacity remaining in battery
     inverter_data = giv_energy.get_inverter_systems_data()
@@ -153,14 +168,20 @@ if __name__ == '__main__':
     # get weather forecast in half hour slots
 
     # get average production of panels in half hour slots for last 30 days
-    solar_production = analyse_solar_production(giv_energy, 30)
+    df_solar_production = analyse_solar_production(giv_energy, 30)
 
     # sum solar data to historic consumption data
+    df_result = df_house_consumption[["avg", "timer"]].merge(df_solar_production[["avg", "timer"]], how='left', on="timer")
+    df_result = df_result.rename(columns={'avg_x': 'consumption',
+                                          'avg_y': 'production'})
+
+    # multiply solar production with bias
+    df_result['energy'] = df_result['consumption'] - (df_result['production'] * 0.8)
 
     # compare against half hour historic time slot data to get an estimated hours left until depleted, tolerance this?
     total_energy_consumed = 0
     no_half_hour_slots = 0
-    for energy in house_consumption["avg"]:
+    for energy in df_result['energy']:
         if total_energy_consumed + energy < battery_watt_hours_remaining:
             total_energy_consumed += energy
             no_half_hour_slots += 1
@@ -169,16 +190,26 @@ if __name__ == '__main__':
 
     time_taken_until_empty = logic_index_to_time(no_half_hour_slots)
 
-    # once have hours left to depleted, filter Octopus data to find cheapest value in time frame available
+    # once have hours left to depleted, filter Octopus data to find the cheapest value in time frame available
+    octopus = Octopus(offline_debug, os.environ.get("OCTOPUS_API_KEY"))
+    agile_data = octopus.get_tariff_data()
 
-    # octopus = Octopus(offline_debug, os.environ.get("OCTOPUS_API_KEY"))
-    # agile_data = octopus.get_tariff_data()
+    df_agile_results = pd.DataFrame(agile_data["results"])
 
-    analyse_data(house_consumption, solar_production)
+    # Get current time
+    now = datetime.now()
+    minutes_to_subtract = now.minute % 30
+    rounded_time = (now - timedelta(hours=-1, minutes=minutes_to_subtract)).replace(second=0, microsecond=0)
+    time = rounded_time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    idx = (df_agile_results['valid_from'] == time).idxmax()
+    df_filtered = df_agile_results.loc[:idx]
+    df_filtered = df_filtered.iloc[::-1].reset_index(drop=True)
+
+    # filter again
+    df_filtered = df_filtered.iloc[:no_half_hour_slots]
+    cheapest_times = df_filtered.nsmallest(5, 'value_inc_vat')
+
+    # analyse_data(df_house_consumption, df_solar_production)
     print('complete')
-    # data = giv_energy.get_inverter_systems_data()
-    # inverter_settings = giv_energy.read_inverter_setting(64)
-    # print(inverter_settings)
-    # octopus.save_json_file("agile-18-july", agile_data)
 
