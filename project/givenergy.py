@@ -4,6 +4,10 @@ import requests
 from project.example_responses.example_data_handler import *
 
 
+"""
+https://givenergy.cloud/docs/api/v1#introduction
+"""
+
 class GivEnergy:
     def __init__(self, offline_debug, api_key):
         self.offline_debug = offline_debug
@@ -105,6 +109,9 @@ class GivEnergy:
                 raise error
 
     def get_inverter_settings(self):
+        """
+        https://givenergy.cloud/docs/api/v1#inverter-control-GETinverter--inverter_serial_number--settings
+        """
         if self.offline_debug:
             return copy.deepcopy(GivEnergyData.inverter_settings())
         else:
@@ -127,6 +134,9 @@ class GivEnergy:
                 raise error
 
     def read_inverter_setting(self, setting):
+        """
+        https://givenergy.cloud/docs/api/v1#inverter-control-POSTinverter--inverter_serial_number--settings--setting_id--read
+        """
         if self.offline_debug:
             return copy.deepcopy(GivEnergyData.read_inverter_setting())
         else:
@@ -150,6 +160,9 @@ class GivEnergy:
                 raise error
 
     def update_inverter_setting(self, setting, value):
+        """
+        https://givenergy.cloud/docs/api/v1#inverter-control-POSTinverter--inverter_serial_number--settings--setting_id--write
+        """
         if not self.offline_debug:
             url = f'{self.base_url}/v1/inverter/{self.inverter_serial_number}/settings/{setting}/write'
             payload = {"value": f"{value}"}
@@ -191,18 +204,14 @@ class GivEnergy:
                              }
 
 
-def save_json_file(filename, data):
-    # Open a file for writing
-    with open(f'example_responses/{filename}.json', 'w') as f:
-        # Use json.dump to write the dictionary to the file
-        json.dump(data, f)
+
 
 
 if __name__ == '__main__':
-    giv_energy = GivEnergy()
-    data = giv_energy.get_inverter_systems_data()
-
-    save_json_file("xx", data)
+    offline_debug = False
+    giv_energy = GivEnergy(offline_debug, os.environ.get("GE_API_KEY"))
+    data = giv_energy.read_inverter_setting(64)
+    print(1)
 
     # "id": 64,
     # "name": "AC Charge 1 Start Time",
