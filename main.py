@@ -6,15 +6,22 @@ TODO:
 """
 
 from datetime import datetime, timedelta
+import logging
 import json
 import os
 
 import pandas as pd
 
+from project.cloudwatch import create_event, send_update
 from project.givenergy import GivEnergy
-from project.octopus import Octopus
 from project.forecast import Forecast
+from project.octopus import Octopus
+from project.secrets import get_secret_or_env
+
 from tools.analysis import *
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def save_json_file(filename, data):
@@ -272,7 +279,7 @@ def extract_time_windows(df_agile_data, no_half_hour_slots, time_offsets):
         (0, 8): 10,
         (8, 16): 8,
         (16, 24): 6,
-        (24, 32): 4,
+        (24, 32): 6,
         (32, 1000): 2
     }
     windows_to_charge = 10
@@ -323,6 +330,7 @@ def merge_consecutive_rows(df_result):
     # Create the result dataframe
     return pd.DataFrame(merged_rows)
 
+
 def update_inverter_charge_time(giv_energy, offline_debug, from_time, to_time):
     """
     Send commands to GivEnergy inverter to charge battery from mains
@@ -333,22 +341,37 @@ def update_inverter_charge_time(giv_energy, offline_debug, from_time, to_time):
     giv_energy.update_inverter_setting(65, to_time)
 
 
-def calculate_charge_windows():
+def update_cloud_watch(cloud_watch_times, time_offsets, aws_fields):
+    if cloud_watch_times and len(cloud_watch_times) > 1:
+        last_time = cloud_watch_times[0]['too_hours']
+        cloud_watch_times = cloud_watch_times[1:]
+        event_json = {'msg': 'update',
+                      'data': cloud_watch_times}
+        create_event(last_time, time_offsets['aws'], aws_fields, event_json)
+    else:
+        event_json = {'msg': 'update',
+                      'data': ''}
+        send_update('cron(0 1 1 1 ? 2050)', 'DISABLED', aws_fields, event_json)
+    return cloud_watch_times
+
+
+def calculate_charge_windows(aws_fields):
     """
     The core calculation function
     """
     time_offsets = {'local_time': 0,
                     'octopus_time': -1,
-                    'giv_energy_time': 1}
+                    'giv_energy_time': 0,
+                    'aws': -1}
 
-    offline_debug = True if os.environ.get("OFFLINE_DEBUG") == '1' else False
-    giv_energy = GivEnergy(offline_debug, os.environ.get("GE_API_KEY"))
-    forecast = Forecast(offline_debug, os.environ.get("DATAPOINT_API_KEY"))
+    offline_debug = True if os.environ.get("OFFLINE_DEBUG") == 'true' else False
+    giv_energy = GivEnergy(offline_debug, get_secret_or_env("GE_API_KEY"))
+    forecast = Forecast(offline_debug, get_secret_or_env("DATAPOINT_API_KEY"))
 
     df_energy_result, est_no_half_hour_windows_bat_depletion = calculate_battery_depletion_time(giv_energy, forecast, time_offsets)
 
     # filter Octopus data to find the cheapest value in time frame available
-    octopus = Octopus(offline_debug, os.environ.get("OCTOPUS_API_KEY"))
+    octopus = Octopus(offline_debug, get_secret_or_env("OCTOPUS_API_KEY"))
     df_agile_data = get_agile_data(octopus, est_no_half_hour_windows_bat_depletion, time_offsets)
     df_time_windows = extract_time_windows(df_agile_data, est_no_half_hour_windows_bat_depletion, time_offsets)
 
@@ -356,18 +379,21 @@ def calculate_charge_windows():
     update_inverter_charge_time(giv_energy, offline_debug,
                                 df_time_windows.iloc[0]["from_hours"],
                                 df_time_windows.iloc[0]["too_hours"])
-    df_time_windows = df_time_windows.drop(df_time_windows.index[0]).reset_index(drop=True)
 
-    # Add each row's values to cloudwatch
-    for _, row in df_time_windows[['from_hours', 'too_hours']].iterrows():
-        print(row)
+    cloud_watch_times = df_time_windows[['from_hours', 'too_hours']].to_dict('records')
+    # cloud_watch_times = cloud_watch_times[1:]
+    cloud_watch_times = update_cloud_watch(cloud_watch_times, time_offsets, aws_fields)
 
     # analyse_data(df_house_consumption, df_solar_production)
-    print('complete')
+    times = df_time_windows[['from_hours', 'too_hours']].to_json(orient='records')
+    logger.info(times)
+    return times
 
 
 if __name__ == '__main__':
-    calculate_charge_windows()
+    aws_fields = {"region": 'eu-west-2',
+                  "account_id": '1'}
+    calculate_charge_windows(aws_fields)
     # update_inverter_charge_time()
 
 
