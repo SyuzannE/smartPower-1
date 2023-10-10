@@ -1,8 +1,10 @@
 import copy
+import logging
 import requests
 
 from project.example_responses.example_data_handler import *
 
+logger = logging.getLogger(__name__)
 
 """
 https://givenergy.cloud/docs/api/v1#introduction
@@ -37,14 +39,12 @@ class GivEnergy:
                 response = requests.request('GET', url, headers=headers, params=params)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions.HTTPError as http_error:
-                raise http_error
-            except requests.exceptions.ConnectionError as connection_error:
-                raise connection_error
-            except requests.exceptions.Timeout as timeout_error:
-                raise timeout_error
             except requests.exceptions.RequestException as error:
-                raise error
+                logger.error(f"Request error occurred: {error}")
+                raise
+            except Exception as general_error:
+                logger.error(f"An unexpected error occurred: {general_error}")
+                raise
 
     def extract_inverter_serial_number(self):
         # Extract inverter serial number
@@ -68,14 +68,12 @@ class GivEnergy:
                 response = requests.request('GET', url, headers=headers)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions.HTTPError as http_error:
-                raise http_error
-            except requests.exceptions.ConnectionError as connection_error:
-                raise connection_error
-            except requests.exceptions.Timeout as timeout_error:
-                raise timeout_error
             except requests.exceptions.RequestException as error:
-                raise error
+                logger.error(f"Request error occurred: {error}")
+                raise
+            except Exception as general_error:
+                logger.error(f"An unexpected error occurred: {general_error}")
+                raise
 
     def get_energy_usage(self, start_date, end_date, e_types):
         """
@@ -99,14 +97,12 @@ class GivEnergy:
                 response = requests.request('POST', url, headers=headers, json=payload)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions.HTTPError as http_error:
-                raise http_error
-            except requests.exceptions.ConnectionError as connection_error:
-                raise connection_error
-            except requests.exceptions.Timeout as timeout_error:
-                raise timeout_error
             except requests.exceptions.RequestException as error:
-                raise error
+                logger.error(f"Request error occurred: {error}")
+                raise
+            except Exception as general_error:
+                logger.error(f"An unexpected error occurred: {general_error}")
+                raise
 
     def get_inverter_settings(self):
         """
@@ -124,14 +120,12 @@ class GivEnergy:
                 response = requests.request('GET', url, headers=headers)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions.HTTPError as http_error:
-                raise http_error
-            except requests.exceptions.ConnectionError as connection_error:
-                raise connection_error
-            except requests.exceptions.Timeout as timeout_error:
-                raise timeout_error
             except requests.exceptions.RequestException as error:
-                raise error
+                logger.error(f"Request error occurred: {error}")
+                raise
+            except Exception as general_error:
+                logger.error(f"An unexpected error occurred: {general_error}")
+                raise
 
     def read_inverter_setting(self, setting):
         """
@@ -150,22 +144,20 @@ class GivEnergy:
                 response = requests.request('POST', url, headers=headers)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions.HTTPError as http_error:
-                raise http_error
-            except requests.exceptions.ConnectionError as connection_error:
-                raise connection_error
-            except requests.exceptions.Timeout as timeout_error:
-                raise timeout_error
             except requests.exceptions.RequestException as error:
-                raise error
+                logger.error(f"Request error occurred: {error}")
+                raise
+            except Exception as general_error:
+                logger.error(f"An unexpected error occurred: {general_error}")
+                raise
 
     def update_inverter_setting(self, setting, value):
         """
         https://givenergy.cloud/docs/api/v1#inverter-control-POSTinverter--inverter_serial_number--settings--setting_id--write
         """
+        url = f'{self.base_url}/v1/inverter/{self.inverter_serial_number}/settings/{setting}/write'
+        payload = {"value": f"{value}"}
         if not self.offline_debug:
-            url = f'{self.base_url}/v1/inverter/{self.inverter_serial_number}/settings/{setting}/write'
-            payload = {"value": f"{value}"}
             headers = {
                 'Authorization': f'Bearer {self.api_key}',
                 'Content-Type': 'application/json',
@@ -174,14 +166,15 @@ class GivEnergy:
                 response = requests.request('POST', url, headers=headers, json=payload)
                 response.raise_for_status()
                 return response.json()
-            except requests.exceptions.HTTPError as http_error:
-                raise http_error
-            except requests.exceptions.ConnectionError as connection_error:
-                raise connection_error
-            except requests.exceptions.Timeout as timeout_error:
-                raise timeout_error
             except requests.exceptions.RequestException as error:
-                raise error
+                logger.error(f"Request error occurred: {error}")
+                raise
+            except Exception as general_error:
+                logger.error(f"An unexpected error occurred: {general_error}")
+                raise
+        else:
+            print(f"URL: {url}")
+            print(f"payload: {payload}")
 
     def extract_system_spec(self):
         battery_voltage = self.system_specs_raw['data'][0]['inverter']['info']['battery'][
@@ -204,27 +197,8 @@ class GivEnergy:
                              }
 
 
-
-
-
 if __name__ == '__main__':
     offline_debug = False
     giv_energy = GivEnergy(offline_debug, os.environ.get("GE_API_KEY"))
     data = giv_energy.read_inverter_setting(64)
-    print(1)
-
-    # "id": 64,
-    # "name": "AC Charge 1 Start Time",
-
-    # "id": 65,
-    # "name": "AC Charge 1 End Time",
-
-    # "id": 28,
-    # "name": "AC Charge 2 Start Time",
-    #
-    # "id": 29,
-    # "name": "AC Charge 2 End Time",
-
-    # "id": 66,
-    # "name": "AC Charge Enable",
 

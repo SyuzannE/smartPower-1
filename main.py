@@ -1,10 +1,3 @@
-# prices for Agile go live for next day at 4pm
-
-"""
-TODO:
-    - programmatically workout difference between Local, Octopus and GivEnergy times
-"""
-
 from datetime import datetime, timedelta
 import logging
 import json
@@ -12,16 +5,16 @@ import os
 
 import pandas as pd
 
-from project.cloudwatch import create_event, send_update
-from project.givenergy import GivEnergy
-from project.forecast import Forecast
-from project.octopus import Octopus
+from project.api.cloudwatch import create_event, send_update
+from project.api.givenergy import GivEnergy
+from project.api.forecast import Forecast
+from project.api.octopus import Octopus
 from project.secrets import get_secret_or_env
 
 from tools.analysis import *
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+
+logger = logging.getLogger(__name__)
 
 
 def save_json_file(filename, data):
@@ -79,7 +72,6 @@ def analyse_forecast(forecast):
     result = []
     for day in data['SiteRep']['DV']['Location']['Period']:
         for count, date in enumerate(dates):
-        # for date in dates:
             if day['value'] == date:
                 for predictions in day["Rep"]:
                     forecast = {'date': date,
@@ -279,7 +271,7 @@ def extract_time_windows(df_agile_data, no_half_hour_slots, time_offsets):
         (0, 8): 10,
         (8, 16): 8,
         (16, 24): 6,
-        (24, 32): 6,
+        (24, 32): 4,
         (32, 1000): 2
     }
     windows_to_charge = 10
@@ -339,6 +331,7 @@ def update_inverter_charge_time(giv_energy, offline_debug, from_time, to_time):
         giv_energy = GivEnergy(offline_debug, os.environ.get("GE_API_KEY"))
     giv_energy.update_inverter_setting(64, from_time)
     giv_energy.update_inverter_setting(65, to_time)
+    logger.info(f"Inverter set to charge from {from_time} too {to_time}")
 
 
 def update_cloud_watch(cloud_watch_times, time_offsets, aws_fields):
@@ -352,6 +345,8 @@ def update_cloud_watch(cloud_watch_times, time_offsets, aws_fields):
         event_json = {'msg': 'update',
                       'data': ''}
         send_update('cron(0 1 1 1 ? 2050)', 'DISABLED', aws_fields, event_json)
+        logger.info(f"CloudWatch cron schedule DISABLED")
+
     return cloud_watch_times
 
 
@@ -381,12 +376,10 @@ def calculate_charge_windows(aws_fields):
                                 df_time_windows.iloc[0]["too_hours"])
 
     cloud_watch_times = df_time_windows[['from_hours', 'too_hours']].to_dict('records')
-    # cloud_watch_times = cloud_watch_times[1:]
     cloud_watch_times = update_cloud_watch(cloud_watch_times, time_offsets, aws_fields)
 
     # analyse_data(df_house_consumption, df_solar_production)
     times = df_time_windows[['from_hours', 'too_hours']].to_json(orient='records')
-    logger.info(times)
     return times
 
 

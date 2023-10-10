@@ -1,9 +1,13 @@
+import logging
 import os
 
 from main import calculate_charge_windows, update_inverter_charge_time, update_cloud_watch
 
-from project.givenergy import GivEnergy
+from project.api.givenergy import GivEnergy
 from project.secrets import get_secret_or_env
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 time_offsets = {'local_time': 0,
                 'octopus_time': -1,
@@ -18,11 +22,11 @@ def handler(event, context):
         arn = "a:b:c:d:e:f"
     aws_fields = {"region": arn.split(":")[3],
                   "account_id": arn.split(":")[4]}
-
     msg = event["msg"]
-
     if msg == 'calculate':
-        return calculate_charge_windows(aws_fields)
+        charge_times = calculate_charge_windows(aws_fields)
+        logger.info(charge_times)
+        return charge_times
     elif msg == 'update':
         data = event["data"]
         offline_debug = True if os.environ.get("OFFLINE_DEBUG") == 'true' else False
@@ -30,8 +34,9 @@ def handler(event, context):
         update_inverter_charge_time(giv_energy, offline_debug,
                                     data[0]['from_hours'],
                                     data[0]['too_hours'])
-        response_data = update_cloud_watch(data, time_offsets, aws_fields)
-        return response_data
+        updated_charge_times = update_cloud_watch(data, time_offsets, aws_fields)
+        logger.info(updated_charge_times)
+        return updated_charge_times
     else:
         return {
             'message': 'unknown command'
@@ -39,17 +44,21 @@ def handler(event, context):
 
 
 if __name__ == '__main__':
+    # event = {
+    #     "msg": "update",
+    #     "data": [
+    #         {
+    #             "from_hours": "05:30",
+    #             "too_hours": "06:00"
+    #         },
+    #         {
+    #             "from_hours": "22:30",
+    #             "too_hours": "23:00"
+    #         }
+    #     ]
+    # }
     event = {
-        "msg": "update",
-        "data": [
-            {
-                "from_hours": "05:30",
-                "too_hours": "06:00"
-            },
-            {
-                "from_hours": "22:30",
-                "too_hours": "23:00"
-            }
-        ]
+        "msg": "calculate",
+        "data": ""
     }
     handler(event, None)
