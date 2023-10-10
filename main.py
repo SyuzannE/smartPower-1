@@ -29,7 +29,10 @@ def logic_index_to_time(index):
     """
     Convert a number that represents a count of half hour instances into hours
     """
-    time = (index * 0.5) - 0.5
+    if index == 0:
+        time = 0
+    else:
+        time = (index * 0.5) - 0.5
     return time
 
 
@@ -256,8 +259,8 @@ def get_agile_data(octopus, est_bat_depletion_time, time_offsets):
     df = df.loc[:idx]
     df = df.iloc[::-1].reset_index(drop=True)
 
-    # Filter end of data, using the estimated battery depletion time
-    df = df.iloc[:est_bat_depletion_time]
+    # Filter end of data for 24 hours period,
+    df = df.iloc[:48]
     return df
 
 
@@ -265,6 +268,9 @@ def extract_time_windows(df_agile_data, no_half_hour_slots, time_offsets):
     """
     Choose most suitable time windows, for cost and time left to depletion.
     Modify time ready for GivEnergy time (+2?) and get into correct format
+
+    If number of half hour slots is less than 8, need to prioritise immediate charging?
+    Say battery is depleted right now,
     """
     df_result = None
     grade_dict = {
@@ -279,7 +285,21 @@ def extract_time_windows(df_agile_data, no_half_hour_slots, time_offsets):
         if low <= logic_index_to_time(no_half_hour_slots) < high:
             windows_to_charge = grade
             break
-    df_result = df_agile_data.nsmallest(windows_to_charge, 'value_inc_vat')
+
+    # if grade => 8 then divide grade by 2, and data into 2 to make sure there are some charge times in next 12 hours
+    if grade >= 8:
+        # Splitting the dataframe into two
+        no_rows = int(round(df_agile_data.shape[0] / 2,))
+        df_first_half = df_agile_data.iloc[:no_rows]
+        df_second_half = df_agile_data.iloc[no_rows:]
+        # Find the cheapest windows for each half
+        charge_windows_half = int(windows_to_charge/2)
+        df_first_half = df_first_half.nsmallest(charge_windows_half, 'value_inc_vat')
+        df_second_half = df_second_half.nsmallest(charge_windows_half, 'value_inc_vat')
+        # Concatenate the two dataframes back together
+        df_result = pd.concat([df_first_half, df_second_half])
+    else:
+        df_result = df_agile_data.nsmallest(windows_to_charge, 'value_inc_vat')
 
     # time value format: HH:MM
     time_offset = time_offsets['giv_energy_time'] - time_offsets['octopus_time']
