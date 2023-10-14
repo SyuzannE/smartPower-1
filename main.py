@@ -279,8 +279,7 @@ def extract_time_windows(df_agile_data, no_half_hour_slots, time_offsets):
     Choose most suitable time windows, for cost and time left to depletion.
     Modify time ready for GivEnergy time (+2?) and get into correct format
 
-    If number of half hour slots is less than 8, need to prioritise immediate charging?
-    Say battery is depleted right now,
+    Charge at any negative price point in addition to the calculated number of windows
     """
     df_result = None
     grade_dict = {
@@ -310,6 +309,11 @@ def extract_time_windows(df_agile_data, no_half_hour_slots, time_offsets):
         df_result = pd.concat([df_first_half, df_second_half])
     else:
         df_result = df_agile_data.nsmallest(windows_to_charge, 'value_inc_vat')
+
+    # Get all negative price points and concat to df_result
+    negative_values_df = df_agile_data[df_agile_data['value_inc_vat'] < 0]
+    df_result = pd.concat([df_result, negative_values_df])
+    df_result.drop_duplicates(inplace=True)
 
     # time value format: HH:MM
     time_offset = time_offsets['giv_energy_time'] - time_offsets['octopus_time']
