@@ -15,15 +15,23 @@ function_name = 'calculate_charge_times'
 logger = logging.getLogger(__name__)
 
 
-def create_cron(set_time: str, time_adjust: int):
+def create_cron(set_time: str, time_adjust: int) -> str:
     """
-    Create a cron schedule to run everyday from the H:M time given and offset time
+    Create a cron schedule to run everyday at a specified time, with an optional adjustment.
+
+    :param set_time: Time in 'H:M' format.
+    :param time_adjust: Hour adjustment which can be positive or negative.
+    :return: A cron schedule string.
     """
-    hours, minutes = set_time.split(':')
-    hours = str(int(hours) + time_adjust)
-    minutes = str(int(minutes))
-    logger.info(f"CloudWatch cron schedule set to {hours}:{minutes}")
-    return f'cron({minutes} {hours} * * ? *)'
+    hours, minutes = map(int, set_time.split(':'))  # Convert str to int directly after splitting
+
+    # Adjust hours and handle wraparound
+    hours = (hours + time_adjust) % 24
+
+    logger.info(f"CloudWatch cron schedule set to {hours:02d}:{minutes:02d}")
+
+    # Return the cron schedule string with zero-padded hours and minutes
+    return f'cron({minutes:01d} {hours:01d} * * ? *)'
 
 
 def create_event(too_hours: str,
