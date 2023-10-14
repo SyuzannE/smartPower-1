@@ -49,7 +49,7 @@ def analyse_energy_usage(giv_energy, weeks, time_offsets):
     previous_dates = get_x_weeks_previous_weekday_dates(weeks)
     data = get_energy_usage_days(giv_energy, previous_dates, [0, 3, 5])
     all_days, times = extract_half_hour_data(data)
-    df = add_to_df(all_days, time_offsets)
+    df = add_to_df(all_days, times, time_offsets)
     df = df.rename(columns={'avg': 'avg_consumption_kwh'})
     return df
 
@@ -62,7 +62,7 @@ def analyse_solar_production(giv_energy, days, time_offsets):
     previous_dates = get_x_previous_days_dates(days)
     data = get_energy_usage_days(giv_energy, previous_dates, [0, 1, 2])
     all_days, times = extract_half_hour_data(data)
-    df = add_to_df(all_days, time_offsets)
+    df = add_to_df(all_days, times, time_offsets)
     df = df.rename(columns={'avg': 'avg_production_kwh'})
     return df
 
