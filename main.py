@@ -16,6 +16,11 @@ from tools.analysis import *
 
 logger = logging.getLogger(__name__)
 
+time_offsets = {'local_time': 0,
+                'octopus_time': -1,
+                'giv_energy_time': 0,
+                'aws': -1}
+
 
 def save_json_file(filename, data):
     """
@@ -43,7 +48,7 @@ def analyse_energy_usage(giv_energy, weeks, time_offsets):
     """
     previous_dates = get_x_weeks_previous_weekday_dates(weeks)
     data = get_energy_usage_days(giv_energy, previous_dates, [0, 3, 5])
-    all_days = extract_half_hour_data(data)
+    all_days, times = extract_half_hour_data(data)
     df = add_to_df(all_days, time_offsets)
     df = df.rename(columns={'avg': 'avg_consumption_kwh'})
     return df
@@ -56,7 +61,7 @@ def analyse_solar_production(giv_energy, days, time_offsets):
     """
     previous_dates = get_x_previous_days_dates(days)
     data = get_energy_usage_days(giv_energy, previous_dates, [0, 1, 2])
-    all_days = extract_half_hour_data(data)
+    all_days, times = extract_half_hour_data(data)
     df = add_to_df(all_days, time_offsets)
     df = df.rename(columns={'avg': 'avg_production_kwh'})
     return df
@@ -120,7 +125,7 @@ def convert_solar_index_to_bias(df_forecast):
     return df_forecast
 
 
-def add_to_df(all_days, time_offsets):
+def add_to_df(all_days, times, time_offsets):
     """
     Create dataframe from dictionary data
     """
@@ -130,6 +135,7 @@ def add_to_df(all_days, time_offsets):
     df["avg"] = df.mean(axis=1)
     # Add a time column as floats
     df["timer"] = [x*0.5 for x in range(df.shape[0])]
+    df["hours"] = times
     # Filter df based from time now and time column
     time = datetime.today()
     time_offset = time_offsets['giv_energy_time'] - time_offsets['local_time']
@@ -185,15 +191,19 @@ def get_energy_usage_days(giv_energy, previous_dates, e_types):
 def extract_half_hour_data(data):
     """
     Average each half hour time slot between the number of weeks
+
+    convert first day times into date times
     """
     all_days = []
     for day in data:
         day.popitem()
         day_total = []
+        times = []
         for half_hour in day.values():
+            times.append((datetime.strptime(half_hour["start_time"], '%Y-%m-%d %H:%M')).time())
             day_total.append(sum(half_hour["data"].values()))
         all_days.append(day_total)
-    return all_days
+    return all_days, times
 
 
 def calculate_battery_depletion_time(giv_energy, forecast, time_offsets):
@@ -374,11 +384,6 @@ def calculate_charge_windows(aws_fields):
     """
     The core calculation function
     """
-    time_offsets = {'local_time': 0,
-                    'octopus_time': -1,
-                    'giv_energy_time': 0,
-                    'aws': -1}
-
     offline_debug = True if os.environ.get("OFFLINE_DEBUG") == 'true' else False
     giv_energy = GivEnergy(offline_debug, get_secret_or_env("GE_API_KEY"))
     forecast = Forecast(offline_debug, get_secret_or_env("DATAPOINT_API_KEY"))
