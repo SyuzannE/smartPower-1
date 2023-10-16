@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta
 import logging
 import json
+import math
 import os
 
+import numpy as np
 import pandas as pd
+import pytz
 
 from project.api.cloudwatch import create_event, send_update
 from project.api.givenergy import GivEnergy
@@ -13,13 +16,34 @@ from project.secrets import get_secret_or_env
 
 from tools.analysis import *
 
-
 logger = logging.getLogger(__name__)
 
-time_offsets = {'local_time': 0,
-                'octopus_time': -1,
-                'giv_energy_time': 0,
-                'aws': -1}
+# lowest_charge_threshhold in kwh, lowest charge point before adding additional charge
+lowest_charge_threshhold = 3
+
+
+def get_time_offsets():
+    # Define the CET timezone
+    cet = pytz.timezone('CET')
+
+    # Get the current time in UTC
+    utc_now = pytz.utc.localize(datetime.utcnow())
+
+    # Convert the current time to CET
+    cet_now = utc_now.astimezone(cet)
+
+    # Get the current local time, and make it timezone-aware
+    local_now = datetime.now()
+    local_tz = pytz.timezone('Europe/London')  # replace with your local timezone
+    local_now = local_tz.localize(local_now)
+
+    # Calculate the difference in hours
+    time_diff = (cet_now - local_now).total_seconds() // 3600  # difference in hours, as an integer
+
+    return {'local_time': 0,
+            'octopus_time': time_diff,
+            'giv_energy_time': 0,
+            'aws': time_diff}
 
 
 def save_json_file(filename, data):
@@ -83,7 +107,7 @@ def analyse_forecast(forecast):
             if day['value'] == date:
                 for predictions in day["Rep"]:
                     forecast = {'date': date,
-                                'timer': count*24 + int(predictions['$']) / 60,
+                                'timer': count * 24 + int(predictions['$']) / 60,
                                 'solar_index': int(predictions['U']),
                                 }
                     result.append(forecast)
@@ -134,7 +158,7 @@ def add_to_df(all_days, times, time_offsets):
     # Add average column
     df["avg"] = df.mean(axis=1)
     # Add a time column as floats
-    df["timer"] = [x*0.5 for x in range(df.shape[0])]
+    df["timer"] = [x * 0.5 for x in range(df.shape[0])]
     df["hours"] = times
     # Filter df based from time now and time column
     time = datetime.today()
@@ -217,9 +241,11 @@ def calculate_battery_depletion_time(giv_energy, forecast, time_offsets):
     df_house_consumption = analyse_energy_usage(giv_energy, 4, time_offsets)
 
     # get watt hour capacity remaining in battery
-    inverter_data = giv_energy.get_inverter_systems_data()
-    battery_watt_hours_remaining = ((inverter_data["data"]["battery"]["percent"] / 100) * \
-                                    giv_energy.system_specs["battery_spec"]["watt_hour"]) / 1000
+    giv_energy.get_inverter_systems_data()
+    giv_energy.system_specs["battery_spec"]["battery_kwatt_hours_remaining"] = ((giv_energy.inverter_data["data"][
+                                                                                     "battery"]["percent"] / 100) * \
+                                                                                giv_energy.system_specs["battery_spec"][
+                                                                                    "watt_hour"]) / 1000
 
     # get weather forecast in half hour slots
     df_forecast = analyse_forecast(forecast)
@@ -227,10 +253,11 @@ def calculate_battery_depletion_time(giv_energy, forecast, time_offsets):
     # get average production of panels in half hour slots for last 30 days
     df_solar_production = analyse_solar_production(giv_energy, 40, time_offsets)
 
-    df_result = df_solar_production[["avg_production_kwh", "timer"]].merge(df_forecast[["solar_bias", "timer"]], how='left', on="timer")
+    df_result = df_solar_production[["avg_production_kwh", "timer"]].merge(df_forecast[["solar_bias", "timer"]],
+                                                                           how='left', on="timer")
 
     # sum solar data to historic consumption data
-    df_result = df_result.merge(df_house_consumption[["avg_consumption_kwh", "timer"]], how='left', on="timer")
+    df_result = df_result.merge(df_house_consumption[["avg_consumption_kwh", "timer", "hours"]], how='left', on="timer")
 
     # multiply solar production with bias
     df_result['energy'] = df_result['avg_consumption_kwh'] - (df_result['avg_production_kwh'] * df_result['solar_bias'])
@@ -239,14 +266,14 @@ def calculate_battery_depletion_time(giv_energy, forecast, time_offsets):
     total_energy_consumed = 0
     no_half_hour_slots = 0
     for energy in df_result['energy']:
-        if total_energy_consumed + energy < battery_watt_hours_remaining:
+        if total_energy_consumed + energy < giv_energy.system_specs["battery_spec"]["battery_kwatt_hours_remaining"]:
             total_energy_consumed += energy
             no_half_hour_slots += 1
         else:
             break
 
     time_taken_until_empty = logic_index_to_time(no_half_hour_slots)
-    return df_result, no_half_hour_slots
+    return df_result, no_half_hour_slots, giv_energy
 
 
 def get_agile_data(octopus, est_bat_depletion_time, time_offsets):
@@ -257,11 +284,15 @@ def get_agile_data(octopus, est_bat_depletion_time, time_offsets):
     df = pd.DataFrame(agile_data["results"])
 
     now = datetime.now()
+    # convert time to the next 30 minute hole number
+    minutes_to_add = 30 - now.minute % 30
+
     # convert time now to the last 30 minutes hole number
     minutes_to_subtract = now.minute % 30
     # Factor in that Octopus time, GMT without daylight savings. Reset seconds and ms
     time_offset = time_offsets['octopus_time'] - time_offsets['local_time']
-    rounded_time = (now - timedelta(hours=time_offset, minutes=minutes_to_subtract)).replace(second=0, microsecond=0)
+    rounded_time = (now - timedelta(minutes=-minutes_to_add)).replace(second=0, microsecond=0)
+    # rounded_time = (now - timedelta(hours=time_offset, minutes=-minutes_to_add)).replace(second=0, microsecond=0)
     time = rounded_time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Filter start of data so first row represents current half hour time slot
@@ -298,11 +329,11 @@ def extract_time_windows(df_agile_data, no_half_hour_slots, time_offsets):
     # if grade => 8 then divide grade by 2, and data into 2 to make sure there are some charge times in next 12 hours
     if grade >= 8:
         # Splitting the dataframe into two
-        no_rows = int(round(df_agile_data.shape[0] / 2,))
+        no_rows = int(round(df_agile_data.shape[0] / 2, ))
         df_first_half = df_agile_data.iloc[:no_rows]
         df_second_half = df_agile_data.iloc[no_rows:]
         # Find the cheapest windows for each half
-        charge_windows_half = int(windows_to_charge/2)
+        charge_windows_half = int(windows_to_charge / 2)
         df_first_half = df_first_half.nsmallest(charge_windows_half, 'value_inc_vat')
         df_second_half = df_second_half.nsmallest(charge_windows_half, 'value_inc_vat')
         # Concatenate the two dataframes back together
@@ -314,11 +345,16 @@ def extract_time_windows(df_agile_data, no_half_hour_slots, time_offsets):
     negative_values_df = df_agile_data[df_agile_data['value_inc_vat'] < 0]
     df_result = pd.concat([df_result, negative_values_df])
     df_result.drop_duplicates(inplace=True)
+    return adjust_time_from_octopus_to_givenergy(df_result, time_offsets)
 
+
+def adjust_time_from_octopus_to_givenergy(df_result, time_offsets):
     # time value format: HH:MM
-    time_offset = time_offsets['giv_energy_time'] - time_offsets['octopus_time']
-    df_result['valid_from_dt'] = (pd.to_datetime(df_result['valid_from'])) + pd.Timedelta(hours=time_offset)
-    df_result['valid_to_dt'] = (pd.to_datetime(df_result['valid_to'])) + pd.Timedelta(hours=time_offset)
+    # time_offset = time_offsets['giv_energy_time'] - time_offsets['octopus_time']
+    # df_result['valid_from_dt'] = (pd.to_datetime(df_result['valid_from'])) - pd.Timedelta(hours=time_offset)
+    # df_result['valid_to_dt'] = (pd.to_datetime(df_result['valid_to'])) - pd.Timedelta(hours=time_offset)
+    df_result['valid_from_dt'] = (pd.to_datetime(df_result['valid_from']))
+    df_result['valid_to_dt'] = (pd.to_datetime(df_result['valid_to']))
     df_result = df_result.sort_values(by=['valid_from_dt']).reset_index(drop=True)
     df_time_windows = merge_consecutive_rows(df_result)
 
@@ -384,6 +420,74 @@ def update_cloud_watch(cloud_watch_times, time_offsets, aws_fields):
     return cloud_watch_times
 
 
+def concat_data_sources(df_energy_result, df_agile_data):
+    # concat dataframes but I dont want any nan values, so don't merge passed the minimum rows
+    min_length = min(len(df_energy_result), len(df_agile_data))
+    df_energy_result = df_energy_result.iloc[:min_length]
+    df_agile_data = df_agile_data.iloc[:min_length]
+    df_energy_insights = pd.concat(
+        [df_energy_result[["timer", "hours", "energy"]], df_agile_data[["value_inc_vat", "valid_from", "valid_to"]]],
+        axis=1)
+    return df_energy_insights
+
+
+def add_additional_charging(df_energy_insights, battery_remaining_capacity, lowest_charge_threshhold):
+    # Find the first row, i.e the lowest index row where the running energy drops below 2
+    low_charge_index = df_energy_insights.loc[df_energy_insights['running_battery_capacity'] < lowest_charge_threshhold].index[0]
+
+    # then filter the dataframe with that rows index
+    df_first = df_energy_insights.loc[:low_charge_index].copy()
+    df_second = df_energy_insights.loc[low_charge_index:].copy()
+
+    # with the new filtered dataframe, find the row with the minimum price and charge = False
+    min_price_index = df_first.loc[df_first['charge'] == False, 'value_inc_vat'].idxmin()
+
+    # Subtract 1.8 from the 'charge_energy' of the row with the minimum price and change the 'charge' value to True
+    df_first.at[min_price_index, 'charged_energy'] -= 1.8
+    df_first.at[min_price_index, 'charge'] = True
+
+    # Concatenate the two dataframes back together
+    df_result = pd.concat([df_first, df_second])
+
+    # Recalculate the running energy
+    df_result['running_battery_capacity'] = battery_remaining_capacity - df_result['charged_energy'].cumsum()
+    return df_result
+
+
+def calculate_charging_times(df_energy_insights, battery_remaining_capacity,
+                             battery_max_capacity, lowest_charge_threshhold, battery_charge_rate_hourly):
+    df_energy_insights['charge'] = False
+    # Calculate the overall energy requirement
+    overall_energy_requirement = round(df_energy_insights['energy'].sum() +
+                                       (battery_max_capacity - battery_remaining_capacity), 2)
+
+    # Calculate the number of hours needed to charge the battery, rounding up whole number
+    slots_to_charge = math.ceil((overall_energy_requirement / battery_charge_rate_hourly) * 2)
+
+    # Sort the dataframe by price
+    df_energy_insights = df_energy_insights.sort_values(by=['value_inc_vat'])
+
+    # Change the first x rows to charge = True, where x = slots_to_charge
+    df_energy_insights.iloc[:slots_to_charge, df_energy_insights.columns.get_loc('charge')] = True
+
+    # Where charge = True, subtract 1.8 from the energy usage, creating a new column called 'charged_energy'
+    df_energy_insights['charged_energy'] = np.where(df_energy_insights['charge'],
+                                                    df_energy_insights['energy'] - 1.8, df_energy_insights['energy'])
+    # Sort the dataframe by index
+    df_energy_insights = df_energy_insights.sort_index()
+
+    # Calculate the running energy
+    df_energy_insights['running_battery_capacity'] = battery_remaining_capacity - df_energy_insights['charged_energy'].cumsum()
+
+    # Does the running energy ever drop below lowest threshhold?
+    while True:
+        if df_energy_insights['running_battery_capacity'].min() < lowest_charge_threshhold:
+            df_energy_insights = add_additional_charging(df_energy_insights)
+        else:
+            break
+    return df_energy_insights
+
+
 def calculate_charge_windows(aws_fields):
     """
     The core calculation function
@@ -391,24 +495,38 @@ def calculate_charge_windows(aws_fields):
     offline_debug = True if os.environ.get("OFFLINE_DEBUG") == 'true' else False
     giv_energy = GivEnergy(offline_debug, get_secret_or_env("GE_API_KEY"))
     forecast = Forecast(offline_debug, get_secret_or_env("DATAPOINT_API_KEY"))
+    time_offsets = get_time_offsets()
 
-    df_energy_result, est_no_half_hour_windows_bat_depletion = calculate_battery_depletion_time(giv_energy, forecast, time_offsets)
+    df_energy_result, est_no_half_hour_windows_bat_depletion, giv_energy = calculate_battery_depletion_time(giv_energy,
+                                                                                                            forecast,
+                                                                                                            time_offsets)
 
     # filter Octopus data to find the cheapest value in time frame available
     octopus = Octopus(offline_debug, get_secret_or_env("OCTOPUS_API_KEY"))
     df_agile_data = get_agile_data(octopus, est_no_half_hour_windows_bat_depletion, time_offsets)
-    df_time_windows = extract_time_windows(df_agile_data, est_no_half_hour_windows_bat_depletion, time_offsets)
+    # df_time_windows = extract_time_windows(df_agile_data, est_no_half_hour_windows_bat_depletion, time_offsets)
+
+    df_energy_insights = concat_data_sources(df_energy_result, df_agile_data)
+    df_energy_insights = calculate_charging_times(df_energy_insights,
+                                 giv_energy.system_specs["battery_spec"]["battery_kwatt_hours_remaining"],
+                                 giv_energy.system_specs["battery_spec"]["watt_hour"] / 1000,
+                                 lowest_charge_threshhold,
+                                 giv_energy.system_specs["battery_spec"]["max_charge_rate_watts"] / 1000
+                                 )
+
+    df_energy_insight_windows = df_energy_insights[df_energy_insights['charge'] == True]
+    df_energy_insight_windows = adjust_time_from_octopus_to_givenergy(df_energy_insight_windows, time_offsets)
 
     # Set the first time window, send the following windows to cloudwatch
     update_inverter_charge_time(giv_energy, offline_debug,
-                                df_time_windows.iloc[0]["from_hours"],
-                                df_time_windows.iloc[0]["too_hours"])
+                                df_energy_insight_windows.iloc[0]["from_hours"],
+                                df_energy_insight_windows.iloc[0]["too_hours"])
 
-    cloud_watch_times = df_time_windows[['from_hours', 'too_hours']].to_dict('records')
+    cloud_watch_times = df_energy_insight_windows[['from_hours', 'too_hours']].to_dict('records')
     cloud_watch_times = update_cloud_watch(cloud_watch_times, time_offsets, aws_fields)
 
     # analyse_data(df_house_consumption, df_solar_production)
-    times = df_time_windows[['from_hours', 'too_hours']].to_json(orient='records')
+    times = df_energy_insight_windows[['from_hours', 'too_hours']].to_json(orient='records')
     return times
 
 
@@ -417,5 +535,3 @@ if __name__ == '__main__':
                   "account_id": '1'}
     calculate_charge_windows(aws_fields)
     # update_inverter_charge_time()
-
-
