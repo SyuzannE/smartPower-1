@@ -23,6 +23,7 @@ lowest_charge_threshhold = 3
 
 
 def get_time_offsets():
+    # Calculate between CET and London
     # Define the CET timezone
     cet = pytz.timezone('CET')
 
@@ -38,12 +39,20 @@ def get_time_offsets():
     local_now = local_tz.localize(local_now)
 
     # Calculate the difference in hours
-    time_diff = (cet_now - local_now).total_seconds() // 3600  # difference in hours, as an integer
+    cet_time_diff = (cet_now - local_now).total_seconds() // 3600  # difference in hours, as an integer
+
+    # Calculate between London and UTC
+    # Current time in London
+    london_now = utc_now.astimezone(pytz.timezone('Europe/London'))
+
+    # Calculate the offset in hours
+    offset_seconds = (london_now.utcoffset().total_seconds())
+    utc_time_diff = int(offset_seconds // 3600)  # Convert to integer hours
 
     return {'local_time': 0,
-            'octopus_time': time_diff,
+            'octopus_time': cet_time_diff,
             'giv_energy_time': 0,
-            'aws': time_diff}
+            'aws': utc_time_diff}
 
 
 def save_json_file(filename, data):
@@ -504,7 +513,7 @@ def calculate_charge_windows(aws_fields):
     # filter Octopus data to find the cheapest value in time frame available
     octopus = Octopus(offline_debug, get_secret_or_env("OCTOPUS_API_KEY"))
     df_agile_data = get_agile_data(octopus, est_no_half_hour_windows_bat_depletion, time_offsets)
-    # df_time_windows = extract_time_windows(df_agile_data, est_no_half_hour_windows_bat_depletion, time_offsets)
+    df_time_windows = extract_time_windows(df_agile_data, est_no_half_hour_windows_bat_depletion, time_offsets)
 
     df_energy_insights = concat_data_sources(df_energy_result, df_agile_data)
     df_energy_insights = calculate_charging_times(df_energy_insights,
