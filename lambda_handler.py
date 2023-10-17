@@ -1,18 +1,13 @@
 import logging
 import os
 
-from main import calculate_charge_windows, update_inverter_charge_time, update_cloud_watch
+from main import calculate_charge_windows, update_inverter_charge_time, update_cloud_watch, get_time_offsets
 
 from project.api.givenergy import GivEnergy
 from project.secrets import get_secret_or_env
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-time_offsets = {'local_time': 0,
-                'octopus_time': -1,
-                'giv_energy_time': 0,
-                'aws': -1}
 
 
 def handler(event, context):
@@ -34,7 +29,7 @@ def handler(event, context):
         update_inverter_charge_time(giv_energy, offline_debug,
                                     data[0]['from_hours'],
                                     data[0]['too_hours'])
-        updated_charge_times = update_cloud_watch(data, time_offsets, aws_fields)
+        updated_charge_times = update_cloud_watch(data, get_time_offsets(), aws_fields)
         logger.info(updated_charge_times)
         return updated_charge_times
     else:

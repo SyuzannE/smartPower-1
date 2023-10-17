@@ -17,6 +17,7 @@ class GivEnergy:
         self.api_key = api_key
         self.system_specs_raw = self.get_system_specifications()
         self.system_specs = {}
+        self.inverter_data = {}
         self.inverter_serial_number = self.extract_inverter_serial_number()
 
     def get_system_specifications(self):
@@ -67,7 +68,7 @@ class GivEnergy:
             try:
                 response = requests.request('GET', url, headers=headers)
                 response.raise_for_status()
-                return response.json()
+                self.inverter_data = response.json()
             except requests.exceptions.RequestException as error:
                 logger.error(f"Request error occurred: {error}")
                 raise

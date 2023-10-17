@@ -12,25 +12,25 @@ class TestCreateCron:
     def test_create_cron_with_positive_adjustment(self):
         # Test with valid time and positive adjustment
         result = create_cron("12:30", 1)
-        assert result == "cron(30 13 * * ? *)"
+        assert result == "cron(30 11 * * ? *)"
 
 
     def test_create_cron_with_negative_adjustment(self):
         # Test with valid time and negative adjustment
         result = create_cron("12:30", -1)
-        assert result == "cron(30 11 * * ? *)"
+        assert result == "cron(30 13 * * ? *)"
 
 
     def test_create_cron_hour_positive_wraparound(self):
         # Test with time adjustment causing hour to exceed 23
         result = create_cron("23:30", 2)
-        assert result == "cron(30 1 * * ? *)"  # This assumes your function handles hour wraparound
+        assert result == "cron(30 21 * * ? *)"  # This assumes your function handles hour wraparound
 
 
     def test_create_cron_hour_negative_wraparound(self):
         # Test with time adjustment causing hour to wrap around to negative
         result = create_cron("01:00", -1)
-        assert result == "cron(0 0 * * ? *)"  # This assumes your function handles hour wraparound
+        assert result == "cron(0 2 * * ? *)"  # This assumes your function handles hour wraparound
 
 
     def test_create_cron_invalid_time_format(self):

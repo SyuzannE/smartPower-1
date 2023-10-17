@@ -26,7 +26,7 @@ def create_cron(set_time: str, time_adjust: int) -> str:
     hours, minutes = map(int, set_time.split(':'))  # Convert str to int directly after splitting
 
     # Adjust hours and handle wraparound
-    hours = (hours + time_adjust) % 24
+    hours = int((hours - time_adjust) % 24)
 
     logger.info(f"CloudWatch cron schedule set to {hours:02d}:{minutes:02d}")
 
