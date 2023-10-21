@@ -29,3 +29,8 @@ Currently, this is a proof of concept.
 Once functional this project can be made into a microservice, it would be nice if it were to communicate its logic daily
 to the user. So the user understands when and why the battery will be charged that day.
 
+Todo list:
+[] - Organise requested data ready for sending to database
+[] - Request solar angle and height data
+[] - Graph / table data for daily sending from gmail
+
