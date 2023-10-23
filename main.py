@@ -358,13 +358,14 @@ def update_cloud_watch(cloud_watch_times, time_offsets, aws_fields):
 
 
 def concat_data_sources(df_energy_result, df_agile_data):
-    # concat dataframes but I dont want any nan values, so don't merge passed the minimum rows
+    # concat dataframes but I don't want any nan values, so don't merge passed the minimum rows
     min_length = min(len(df_energy_result), len(df_agile_data))
     df_agile_data = df_agile_data.iloc[:min_length].copy()
-    df_agile_data = df_agile_data.iloc[:min_length]
+    df_energy_result = df_energy_result.iloc[:min_length].copy()
     df_energy_insights = pd.concat(
         [df_energy_result[["timer", "hours", "energy"]], df_agile_data[["value_inc_vat", "valid_from", "valid_to"]]],
         axis=1)
+
     return df_energy_insights
 
 
@@ -507,6 +508,7 @@ def calculate_charge_windows(aws_fields):
                                                   giv_energy.system_specs["battery_spec"][
                                                       "max_charge_rate_watts"] / 1000
                                                   )
+    x = df_energy_insights.to_json()
 
     df_energy_insight_windows = df_energy_insights[df_energy_insights['charge'] == True].copy()
     df_energy_insight_windows = prepare_time_windows_for_octopus(df_energy_insight_windows)
