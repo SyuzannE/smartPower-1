@@ -20,7 +20,7 @@ def handler(event, context):
     msg = event["msg"]
     if msg == 'calculate':
         charge_times = calculate_charge_windows(aws_fields)
-        logger.info(charge_times)
+        logger.info(f"Calculated charge windows: {charge_times}")
         return charge_times
     elif msg == 'update':
         data = event["data"]
