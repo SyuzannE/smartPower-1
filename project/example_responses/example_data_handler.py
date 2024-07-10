@@ -19,8 +19,8 @@ def get_data(file_name):
 
 class GivEnergyData:
     @staticmethod
-    def communication_device():
-        return get_data('communication_device.json')
+    def system_specification():
+        return get_data('inverter_system_specification.json')
 
     @staticmethod
     def inverter_settings():
@@ -29,6 +29,14 @@ class GivEnergyData:
     @staticmethod
     def read_inverter_setting():
         return get_data('read_setting.json')
+
+    @staticmethod
+    def inverter_systems():
+        return get_data('inverter_systems.json')
+
+    @staticmethod
+    def energy_usage():
+        return get_data('energy_usage.json')
 
 
 class OctopusData:

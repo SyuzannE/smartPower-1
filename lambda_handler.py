@@ -1,10 +1,14 @@
 import logging
 import os
 
+import boto3
+
 from main import calculate_charge_windows, update_inverter_charge_time, update_cloud_watch, get_time_offsets
 
+from project.api.cloudwatch import CloudWatch
 from project.api.givenergy import GivEnergy
 from project.secrets import get_secret_or_env
+from project.api.sns_email import send_email
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -18,18 +22,23 @@ def handler(event, context):
     aws_fields = {"region": arn.split(":")[3],
                   "account_id": arn.split(":")[4]}
     msg = event["msg"]
+    offline_debug = True if os.environ.get("OFFLINE_DEBUG") == 'true' else False
+    cloudwatch = CloudWatch(offline_debug)
     if msg == 'calculate':
-        charge_times = calculate_charge_windows(aws_fields)
+        charge_times, df_energy_insights = calculate_charge_windows(offline_debug, aws_fields, cloudwatch)
         logger.info(f"Calculated charge windows: {charge_times}")
+        send_email(offline_debug, charge_times)
+
         return charge_times
     elif msg == 'update':
         data = event["data"]
-        offline_debug = True if os.environ.get("OFFLINE_DEBUG") == 'true' else False
         giv_energy = GivEnergy(offline_debug, get_secret_or_env("GE_API_KEY"))
         update_inverter_charge_time(giv_energy, offline_debug,
                                     data[0]['from_hours'],
                                     data[0]['too_hours'])
-        updated_charge_times = update_cloud_watch(data, get_time_offsets(), aws_fields)
+        updated_charge_times = cloudwatch.update_cloud_watch(data, get_time_offsets(), aws_fields)
+
+        # updated_charge_times = update_cloud_watch(data, get_time_offsets(), aws_fields)
         logger.info(updated_charge_times)
         return updated_charge_times
     else:

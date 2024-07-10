@@ -25,7 +25,7 @@ class GivEnergy:
         https://givenergy.cloud/docs/api/v1#communication-device
         """
         if self.offline_debug:
-            return copy.deepcopy(GivEnergyData.communication_device())
+            return copy.deepcopy(GivEnergyData.system_specification())
         else:
             url = f'{self.base_url}/v1/communication-device'
             params = {
@@ -57,7 +57,7 @@ class GivEnergy:
         https://givenergy.cloud/docs/api/v1#inverter-data-GETinverter--inverter_serial_number--system-data-latest
         """
         if self.offline_debug:
-            pass
+            return copy.deepcopy(GivEnergyData.inverter_systems())
         else:
             url = f'{self.base_url}/v1/inverter/{self.inverter_serial_number}/system-data/latest'
             headers = {
@@ -81,7 +81,7 @@ class GivEnergy:
         https://givenergy.cloud/docs/api/v1#energy-flow-data-POSTinverter--inverter_serial_number--energy-flows
         """
         if self.offline_debug:
-            pass
+            return copy.deepcopy(GivEnergyData.energy_usage())
         else:
             payload = {"start_time": start_date,
                        "end_time": end_date,

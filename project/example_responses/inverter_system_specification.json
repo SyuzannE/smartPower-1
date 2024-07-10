@@ -1,26 +1,28 @@
 {
   "data": [
     {
-      "serial_number": "serial_number0",
+      "serial_number": "WG2302G694",
+      "firmware_version": null,
       "type": "GPRS",
       "commission_date": "2023-07-03T00:00:00Z",
       "inverter": {
-        "serial": "serial1",
+        "serial": "EA2302G694",
         "status": "NORMAL",
-        "last_online": "2023-07-14T20:14:20Z",
-        "last_updated": "2023-07-14T22:02:02Z",
+        "last_online": "2024-07-10T08:06:29Z",
+        "last_updated": "2024-07-10T15:01:01Z",
         "commission_date": "2023-07-03T00:00:00Z",
         "info": {
           "battery_type": "LITHIUM",
           "battery": {
             "nominal_capacity": 160,
-            "nominal_voltage": 51.2
+            "nominal_voltage": 51.2,
+            "depth_of_discharge": 1
           },
           "model": "GIV-HY3.6",
           "max_charge_rate": 3600
         },
         "warranty": {
-          "type": "Standard",
+          "type": "Standard Legacy",
           "expiry_date": "2028-07-03T00:00:00Z"
         },
         "firmware_version": {
@@ -30,17 +32,33 @@
         "connections": {
           "batteries": [
             {
-              "serial": "serial_bat",
-              "firmware_version": "3012",
+              "module_number": 1,
+              "serial": "DY2227G015",
+              "firmware_version": 3012,
               "capacity": {
                 "full": 167.4,
                 "design": 160
               },
               "cell_count": 16,
-              "has_usb": false
+              "has_usb": false,
+              "nominal_voltage": 51.2
+            }
+          ],
+          "meters": [
+            {
+              "address": 1,
+              "serial_number": 22064658,
+              "manufacturer_code": "1179713813",
+              "type_code": 277,
+              "hardware_version": 1,
+              "software_version": 1,
+              "baud_rate": 9600
             }
           ]
-        }
+        },
+        "flags": [
+          "full-power-discharge-in-eco-mode"
+        ]
       }
     }
   ],

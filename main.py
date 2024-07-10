@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pytz
 
-from project.api.cloudwatch import create_event, send_update
 from project.api.givenergy import GivEnergy
 from project.api.forecast import Forecast
 from project.api.octopus import Octopus
@@ -341,17 +340,17 @@ def update_inverter_charge_time(giv_energy, offline_debug, from_time, to_time):
     logger.info(f"Inverter set to charge from {from_time} too {to_time}")
 
 
-def update_cloud_watch(cloud_watch_times, time_offsets, aws_fields):
+def update_cloud_watch(cloudwatch, cloud_watch_times, time_offsets, aws_fields):
     if cloud_watch_times and len(cloud_watch_times) > 1:
         last_time = cloud_watch_times[0]['too_hours']
         cloud_watch_times = cloud_watch_times[1:]
         event_json = {'msg': 'update',
                       'data': cloud_watch_times}
-        create_event(last_time, time_offsets['aws'], aws_fields, event_json)
+        cloudwatch.create_event(last_time, time_offsets['aws'], aws_fields, event_json)
     else:
         event_json = {'msg': 'update',
                       'data': ''}
-        send_update('cron(0 1 1 1 ? 2050)', 'DISABLED', aws_fields, event_json)
+        cloudwatch.send_update('cron(0 1 1 1 ? 2050)', 'DISABLED', aws_fields, event_json)
         logger.info(f"CloudWatch cron schedule DISABLED")
 
     return cloud_watch_times
@@ -462,6 +461,9 @@ def determine_optimal_charging_periods(df_energy_insights: pd.DataFrame, battery
     # Change the first x rows to charge = True, where x = slots_to_charge
     df_energy_insights.iloc[:slots_to_charge, df_energy_insights.columns.get_loc('charge')] = True
 
+    # charge all negative priced slots. Slots that energy company pays customer to use energy
+    df_energy_insights.loc[df_energy_insights['value_inc_vat'] < 0, 'charge'] = True
+
     # Where charge = True, subtract 1.8 from the energy usage, creating a new column called 'charged_energy'
     df_energy_insights['charged_energy'] = np.where(df_energy_insights['charge'],
                                                     df_energy_insights['energy'] - 1.8, df_energy_insights['energy'])
@@ -482,11 +484,10 @@ def determine_optimal_charging_periods(df_energy_insights: pd.DataFrame, battery
     return df_energy_insights
 
 
-def calculate_charge_windows(aws_fields):
+def calculate_charge_windows(offline_debug, aws_fields, cloudwatch):
     """
     The core calculation function
     """
-    offline_debug = True if os.environ.get("OFFLINE_DEBUG") == 'true' else False
     giv_energy = GivEnergy(offline_debug, get_secret_or_env("GE_API_KEY"))
     forecast = Forecast(offline_debug, get_secret_or_env("DATAPOINT_API_KEY"))
     time_offsets = get_time_offsets()
@@ -519,11 +520,11 @@ def calculate_charge_windows(aws_fields):
                                 df_energy_insight_windows.iloc[0]["too_hours"])
 
     cloud_watch_times = df_energy_insight_windows[['from_hours', 'too_hours']].to_dict('records')
-    cloud_watch_times = update_cloud_watch(cloud_watch_times, time_offsets, aws_fields)
+    cloud_watch_times = update_cloud_watch(cloudwatch, cloud_watch_times, time_offsets, aws_fields)
 
     # analyse_data(df_house_consumption, df_solar_production)
     times = df_energy_insight_windows[['from_hours', 'too_hours']].to_json(orient='records')
-    return times
+    return times, df_energy_insights
 
 
 if __name__ == '__main__':
