@@ -16,7 +16,7 @@ sensible times to charge the battery
 There are multiple factors the device needs to consider in order to select the correct charge window. I believe these
 are;
  - Estimate time to battery depletion by;
-   - the typical daily electrical usage. Average of last x days
+   - the typical daily electrical usage. Average of last x same week days
    - estimated electrical solar generation
      - using an average of the last x days
      - cloud cover forecast 
@@ -30,7 +30,13 @@ Once functional this project can be made into a microservice, it would be nice i
 to the user. So the user understands when and why the battery will be charged that day.
 
 Todo list:
-[] - Organise requested data ready for sending to database
+[] - Validate aws, givenergy and octopus timezones. Find new solution for managing these
+    - Rather than saving +1, -1 etc. Save data as UTC, UTC+1..
+[] - Organise requested data ready for saving to AWS S3 as .csv files
+    - Two sections of data. Historic and future;
+    - Historic: GivEnergy solar generation, battery and home usage. Solar angle and height data
+    - Future: Octopus agile rates. MetOffice cloud cover forecast
+    
 [] - Request solar angle and height data
 [] - Graph / table data for daily sending from gmail
 

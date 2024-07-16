@@ -36,9 +36,7 @@ def handler(event, context):
         update_inverter_charge_time(giv_energy, offline_debug,
                                     data[0]['from_hours'],
                                     data[0]['too_hours'])
-        updated_charge_times = cloudwatch.update_cloud_watch(data, get_time_offsets(), aws_fields)
-
-        # updated_charge_times = update_cloud_watch(data, get_time_offsets(), aws_fields)
+        updated_charge_times = update_cloud_watch(data, get_time_offsets(), aws_fields)
         logger.info(updated_charge_times)
         return updated_charge_times
     else:
