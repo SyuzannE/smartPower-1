@@ -1,13 +1,17 @@
 # smartPower
 
-A project that aims to fix the issue of manually choosing multiple time windows daily to charge a domestic electrical battery from
-the grid when on a flexible rate tariff.
+## Overview
 
-The solar - battery controller is a GivEnergy unit. The electrical supplier is Octopus energy
+A project that automates the selection of an inverters charge windows. When on a Octopus Agile flexible tarrif with a GivEnergy Inverter and Battery system.
 
-On a flexible rate tariff, where each half an hour represents a different electrical price point, pence per kwh.
+Currently this produces a x2 saving over GivEnergys best charging algorithm (June 2024).
 
-The GivEnergy app only allows you to select a single window of time to choose the battery, sometimes you may want to 
+
+## About the project
+
+The Octopus Agile tarrif provides half hour time windows that represent a different electrical price point, in pence per kwh.
+
+The GivEnergy app only allows you to select a single window of time to charge the battery, sometimes you may want to 
 select multiple windows.
 
 There are a number of 'smart' charge options, however through testing they do not seem to select the cheapest or most 
@@ -19,19 +23,24 @@ are;
    - the typical daily electrical usage. Average of last x same week days
    - estimated electrical solar generation
      - using an average of the last x days
-     - cloud cover forecast 
+     - multiplied by a cloud cover forecast bias
    - remaining battery energy
  - Compare against cheapest half hour electrical price. Check that it will charge battery to sufficient level
 
 Data will need to be requested from the GivEnergy, Octopus and MetOffices DataPoint API's.
 
-Currently, this is a proof of concept.
-Once functional this project can be made into a microservice, it would be nice if it were to communicate its logic daily
-to the user. So the user understands when and why the battery will be charged that day.
 
-Todo list:
-[] - Validate aws, givenergy and octopus timezones. Find new solution for managing these
-    - Rather than saving +1, -1 etc. Save data as UTC, UTC+1..
+## Data integrations & API's
+
+- GivEnergy API for solar and house usage data plus controlling the charge times of the inverter.
+- Octopus Energy API for the half hourly price point data.
+- MetOffice CloudWatch API for cloud forecast data.
+- AWS SNS for sending charge updates via email.
+- AWS CloudWatch for scheduling future charge window.
+
+## Todo list;
+[] - Unit and integration tests
+
 [] - Organise requested data ready for saving to AWS S3 as .csv files
     - Two sections of data. Historic and future;
     - Historic: GivEnergy solar generation, battery and home usage. Solar angle and height data
@@ -40,29 +49,4 @@ Todo list:
 [] - Request solar angle and height data
 [] - Graph / table data for daily sending from gmail
 
-agile api data says 5pm which matches the 6pm time on the app. So (api +1 == now)
-it calculated the charge time as 2pm, whereas it should have set 3pm. So. (charge_time + 1 = actual)
 
-London now = 8am
-UTC = 7am
-CET = 9am
-agile api data says 5pm which matches the 6pm time on the app. So (api +1 == now)
-it calculated the charge time as 2pm, whereas it should have set 3pm. So. (charge_time + 1 = actual)
-
-the agile api data has not been offset
-Giv energy = London time
-Octopus = UTC
-AWS = UTC
-
-Difference between giv and octopus = -1
-difference between octopus and giv = 1
-
-So
-would recive time from octopus at 7am
-this would equate to 8am on giv energy
-and 7am on aws
-
-
-In the UK the clocks go forward 1 hour at 1am on the last Sunday in March, and back 1 hour at 2am on the last Sunday in October. 
-
-the agile api data has not been offset
