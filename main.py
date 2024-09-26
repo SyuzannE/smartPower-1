@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta
 import logging
 import json
@@ -17,7 +18,7 @@ from project.secrets import get_secret_or_env
 logger = logging.getLogger(__name__)
 
 # lowest_charge_threshold in kwh, lowest charge point before adding additional charge
-lowest_charge_threshold = 3
+lowest_charge_threshold = 2
 
 
 def get_time_offsets():
@@ -46,9 +47,18 @@ def get_time_offsets():
     # Calculate the offset in hours
     offset_seconds = (london_now.utcoffset().total_seconds())
     utc_time_diff = int(offset_seconds // 3600)  # Convert to integer hours
+    utc_time_diff = -utc_time_diff # make negative as were interest in London time compared to UTC not UTC compared to London
 
-    return {'local_time': 0,
-            'octopus_time': cet_time_diff,
+    local = datetime.now()
+
+    if local.hour == utc_now.hour:
+        local_time = 1
+    else:
+        local_time = 0
+
+
+    return {'local_time': local_time,
+            'octopus_time': utc_time_diff,
             'giv_energy_time': 0,
             'aws': utc_time_diff}
 
@@ -263,7 +273,7 @@ def calculate_battery_depletion_time(giv_energy: Any, forecast: Any, time_offset
     return df_result, giv_energy
 
 
-def get_agile_data(octopus):
+def get_agile_data(octopus, time_offsets):
     """
     Request Agile data from Octopus, add to dataframe and do some basic analysis
     """
@@ -271,10 +281,17 @@ def get_agile_data(octopus):
     df = pd.DataFrame(agile_data["results"])
 
     now = datetime.now()
+    local_time = time_offsets['local_time']
+    giv_time = time_offsets['giv_energy_time']
+    octopus_time = time_offsets['octopus_time']
+
     # convert time to the next 30 minute hole number
     minutes_to_add = 30 - now.minute % 30
 
-    # Factor in that Octopus time, GMT without daylight savings. Reset seconds and ms
+    # Adjust local time to match octopus time according to time_offsets
+    now = now + timedelta(hours=local_time + octopus_time)
+
+    # reset seconds and ms
     rounded_time = (now - timedelta(minutes=-minutes_to_add)).replace(second=0, microsecond=0)
     time = rounded_time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -283,19 +300,36 @@ def get_agile_data(octopus):
     df = df.loc[:idx]
     df = df.iloc[::-1].reset_index(drop=True)
 
-    # Filter end of data for 24 hours period,
+    # Filter end of data for 24 hours period
     df = df.iloc[:48]
+
+    # Adjust octopus agile api times to match giv time
+    df['valid_from_octopus'] = pd.to_datetime(df['valid_from'])
+    df['valid_to_octopus'] = pd.to_datetime(df['valid_to'])
+
+    time_delta = pd.Timedelta(hours=giv_time-octopus_time)
+    df['valid_from_giv'] = df['valid_from_octopus'] + time_delta
+    df['valid_to_giv'] = df['valid_to_octopus'] + time_delta
     return df
 
 
-def prepare_time_windows_for_octopus(df_result):
-    df_result['valid_from_dt'] = (pd.to_datetime(df_result['valid_from']))
-    df_result['valid_to_dt'] = (pd.to_datetime(df_result['valid_to']))
-    df_result = df_result.sort_values(by=['valid_from_dt']).reset_index(drop=True)
+def prepare_time_windows_for_givenergy(df_result, time_offsets):
+    # df_result['valid_from_dt'] = (pd.to_datetime(df_result['valid_from']))
+    # df_result['valid_to_dt'] = (pd.to_datetime(df_result['valid_to']))
+    df_result = df_result.sort_values(by=['valid_from_giv']).reset_index(drop=True)
     df_time_windows = merge_consecutive_rows(df_result)
 
-    df_time_windows['from_hours'] = df_time_windows['valid_from_dt'].dt.strftime('%H:%M')
-    df_time_windows['too_hours'] = df_time_windows['valid_to_dt'].dt.strftime('%H:%M')
+    df_time_windows['from_hours_giv'] = df_time_windows['valid_from_giv'].dt.strftime('%H:%M')
+    df_time_windows['too_hours_giv'] = df_time_windows['valid_to_giv'].dt.strftime('%H:%M')
+
+    aws_time = time_offsets['aws']
+    giv_time = time_offsets['giv_energy_time']
+    time_delta = pd.Timedelta(hours=aws_time-giv_time)
+    df_time_windows['valid_from_aws'] = df_time_windows['valid_from_giv'] + time_delta
+    df_time_windows['valid_to_aws'] = df_time_windows['valid_to_giv'] + time_delta
+
+    df_time_windows['from_hours_aws'] = df_time_windows['valid_from_aws'].dt.strftime('%H:%M')
+    df_time_windows['too_hours_aws'] = df_time_windows['valid_to_aws'].dt.strftime('%H:%M')
     return df_time_windows
 
 
@@ -308,22 +342,22 @@ def merge_consecutive_rows(df_result):
     merged_rows = []
 
     # Initialize current start and end values
-    start = df_result.loc[0, 'valid_from_dt']
-    end = df_result.loc[0, 'valid_to_dt']
+    start = df_result.loc[0, 'valid_from_giv']
+    end = df_result.loc[0, 'valid_to_giv']
 
     # Loop through rows
     for i in range(1, len(df_result)):
-        if df_result.loc[i, 'valid_from_dt'] == end:
+        if df_result.loc[i, 'valid_from_giv'] == end:
             # If consecutive, update the end value
-            end = df_result.loc[i, 'valid_to_dt']
+            end = df_result.loc[i, 'valid_to_giv']
         else:
             # If not consecutive, append the merged row and reset start and end values
-            merged_rows.append({'valid_from_dt': start, 'valid_to_dt': end})
-            start = df_result.loc[i, 'valid_from_dt']
-            end = df_result.loc[i, 'valid_to_dt']
+            merged_rows.append({'valid_from_giv': start, 'valid_to_giv': end})
+            start = df_result.loc[i, 'valid_from_giv']
+            end = df_result.loc[i, 'valid_to_giv']
 
     # Append the last merged row
-    merged_rows.append({'valid_from_dt': start, 'valid_to_dt': end})
+    merged_rows.append({'valid_from_giv': start, 'valid_to_giv': end})
 
     # Create the result dataframe
     return pd.DataFrame(merged_rows)
@@ -335,18 +369,33 @@ def update_inverter_charge_time(giv_energy, offline_debug, from_time, to_time):
     """
     if giv_energy is None:
         giv_energy = GivEnergy(offline_debug, os.environ.get("GE_API_KEY"))
-    giv_energy.update_inverter_setting(64, from_time)
-    giv_energy.update_inverter_setting(65, to_time)
-    logger.info(f"Inverter set to charge from {from_time} too {to_time}")
+
+    set_and_check_setting(giv_energy, 64, from_time)
+    set_and_check_setting(giv_energy, 65, to_time)
+    # giv_energy.update_inverter_setting(64, from_time)
+    # giv_energy.update_inverter_setting(65, to_time)    logger.info(f"Inverter set to charge from {from_time} too {to_time}")
 
 
-def update_cloud_watch(cloudwatch, cloud_watch_times, time_offsets, aws_fields):
+def set_and_check_setting(giv_energy, setting, value):
+    # Try setting and reading back the inverter setting 3 times
+    for _ in range(3):
+        giv_energy.update_inverter_setting(setting, value)
+        time.sleep(1)
+        result = giv_energy.read_inverter_setting(setting)
+        if result:
+            if result['data']['value'] == value:
+                break
+    return None
+
+
+
+def update_cloud_watch(cloudwatch, cloud_watch_times, aws_fields):
     if cloud_watch_times and len(cloud_watch_times) > 1:
-        last_time = cloud_watch_times[0]['too_hours']
+        last_time = cloud_watch_times[0]['too_hours_aws']
         cloud_watch_times = cloud_watch_times[1:]
         event_json = {'msg': 'update',
                       'data': cloud_watch_times}
-        cloudwatch.create_event(last_time, time_offsets['aws'], aws_fields, event_json)
+        cloudwatch.create_event(last_time, aws_fields, event_json)
     else:
         event_json = {'msg': 'update',
                       'data': ''}
@@ -362,7 +411,7 @@ def concat_data_sources(df_energy_result, df_agile_data):
     df_agile_data = df_agile_data.iloc[:min_length].copy()
     df_energy_result = df_energy_result.iloc[:min_length].copy()
     df_energy_insights = pd.concat(
-        [df_energy_result[["timer", "hours", "energy"]], df_agile_data[["value_inc_vat", "valid_from", "valid_to"]]],
+        [df_energy_result[["timer", "hours", "energy"]], df_agile_data[["value_inc_vat", "valid_from_giv", "valid_to_giv"]]],
         axis=1)
 
     return df_energy_insights
@@ -427,7 +476,7 @@ def calculate_running_battery_capacity(df_energy_insights, battery_remaining_cap
             diff_from_max = battery_max_capacity - df_energy_insights["running_battery_capacity"][i - 1]
 
             if diff_from_max < battery_charge_rate_hourly / 2:
-                df_energy_insights.loc[i ,'_new_charged_energy'] = df_energy_insights['_new_charged_energy'][i] + \
+                df_energy_insights.loc[i,'_new_charged_energy'] = df_energy_insights['_new_charged_energy'][i] + \
                                                               ((battery_charge_rate_hourly / 2) - diff_from_max)
             running_battery_capacity = df_energy_insights.loc[i - 1, "running_battery_capacity"] - \
                                        df_energy_insights.loc[i, '_new_charged_energy']
@@ -498,7 +547,7 @@ def calculate_charge_windows(offline_debug, aws_fields, cloudwatch):
 
     # filter Octopus data to find the cheapest value in time frame available
     octopus = Octopus(offline_debug, get_secret_or_env("OCTOPUS_API_KEY"))
-    df_agile_data = get_agile_data(octopus)
+    df_agile_data = get_agile_data(octopus, time_offsets)
 
     df_energy_insights = concat_data_sources(df_energy_result, df_agile_data)
     df_energy_insights = determine_optimal_charging_periods(df_energy_insights,
@@ -509,22 +558,25 @@ def calculate_charge_windows(offline_debug, aws_fields, cloudwatch):
                                                   giv_energy.system_specs["battery_spec"][
                                                       "max_charge_rate_watts"] / 1000
                                                   )
-    x = df_energy_insights.to_json()
 
     df_energy_insight_windows = df_energy_insights[df_energy_insights['charge'] == True].copy()
-    df_energy_insight_windows = prepare_time_windows_for_octopus(df_energy_insight_windows)
 
-    # Set the first time window, send the following windows to cloudwatch
-    update_inverter_charge_time(giv_energy, offline_debug,
-                                df_energy_insight_windows.iloc[0]["from_hours"],
-                                df_energy_insight_windows.iloc[0]["too_hours"])
+    if len(df_energy_insight_windows.index) > 0:
+        df_energy_insight_windows = prepare_time_windows_for_givenergy(df_energy_insight_windows, time_offsets)
 
-    cloud_watch_times = df_energy_insight_windows[['from_hours', 'too_hours']].to_dict('records')
-    cloud_watch_times = update_cloud_watch(cloudwatch, cloud_watch_times, time_offsets, aws_fields)
+        # Set the first time window, send the following windows to cloudwatch
+        update_inverter_charge_time(giv_energy, offline_debug,
+                                    df_energy_insight_windows.iloc[0]["from_hours_giv"],
+                                    df_energy_insight_windows.iloc[0]["too_hours_giv"])
 
-    # analyse_data(df_house_consumption, df_solar_production)
-    times = df_energy_insight_windows[['from_hours', 'too_hours']].to_json(orient='records')
-    return times, df_energy_insights
+        cloud_watch_times = df_energy_insight_windows[['from_hours_giv', 'too_hours_giv', 'from_hours_aws', 'too_hours_aws']].to_dict('records')
+        cloud_watch_times = update_cloud_watch(cloudwatch, cloud_watch_times, aws_fields)
+
+        # analyse_data(df_house_consumption, df_solar_production)
+        times = df_energy_insight_windows[['from_hours_giv', 'too_hours_giv', 'from_hours_aws', 'too_hours_aws']].to_json(orient='records')
+        return times, df_energy_insights
+    else:
+        return None, df_energy_insights
 
 
 if __name__ == '__main__':

@@ -18,7 +18,6 @@ class CloudWatch:
 
     def create_event(self,
                      too_hours: str,
-                     time_adjust: int,
                      aws_fields: Dict[str, str],
                      input_json: Dict) -> None:
         """
@@ -26,10 +25,10 @@ class CloudWatch:
         by a time offset. This event then triggers an AWS Lambda function with the
         provided input JSON payload.
         """
-        cron_expression = self.create_cron(too_hours, time_adjust)
+        cron_expression = self.create_cron(too_hours)
         self.send_update(cron_expression, 'ENABLED', aws_fields, input_json)
 
-    def create_cron(self, set_time: str, time_adjust: int) -> str:
+    def create_cron(self, set_time: str) -> str:
         """
         Create a cron schedule to run everyday at a specified time, with an optional adjustment.
 
@@ -40,7 +39,7 @@ class CloudWatch:
         hours, minutes = map(int, set_time.split(':'))  # Convert str to int directly after splitting
 
         # Adjust hours and handle wraparound
-        hours = int((hours - time_adjust) % 24)
+        hours = int((hours) % 24)
 
         logger.info(f"CloudWatch cron schedule set to {hours:02d}:{minutes:02d}")
 

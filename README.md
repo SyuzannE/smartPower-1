@@ -40,3 +40,29 @@ Todo list:
 [] - Request solar angle and height data
 [] - Graph / table data for daily sending from gmail
 
+agile api data says 5pm which matches the 6pm time on the app. So (api +1 == now)
+it calculated the charge time as 2pm, whereas it should have set 3pm. So. (charge_time + 1 = actual)
+
+London now = 8am
+UTC = 7am
+CET = 9am
+agile api data says 5pm which matches the 6pm time on the app. So (api +1 == now)
+it calculated the charge time as 2pm, whereas it should have set 3pm. So. (charge_time + 1 = actual)
+
+the agile api data has not been offset
+Giv energy = London time
+Octopus = UTC
+AWS = UTC
+
+Difference between giv and octopus = -1
+difference between octopus and giv = 1
+
+So
+would recive time from octopus at 7am
+this would equate to 8am on giv energy
+and 7am on aws
+
+
+In the UK the clocks go forward 1 hour at 1am on the last Sunday in March, and back 1 hour at 2am on the last Sunday in October. 
+
+the agile api data has not been offset

@@ -4,7 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/project/original_example_responses" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.10 (smartPower)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="smartPower_new" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
