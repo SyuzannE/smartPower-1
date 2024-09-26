@@ -2,7 +2,7 @@
 
 ## Overview
 
-A project that automates the selection of an inverters charge windows. When on a Octopus Agile flexible tarrif with a GivEnergy Inverter and Battery system.
+An AWS Lambda project that automates the selection of an inverters charge windows. When on a Octopus Agile flexible tarrif with a GivEnergy Inverter and Battery system.
 
 Currently this produces a x2 saving over GivEnergys best charging algorithm (June 2024).
 
