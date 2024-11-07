@@ -3,7 +3,6 @@ from botocore.exceptions import ClientError
 import os
 from typing import Optional
 
-
 REGION_NAME: Optional[str] = os.getenv("AWS_REGION", default=None)
 SECRETS_ENABLED: bool = os.getenv("SECRETS_ENABLED", default="false").strip().lower() == "true"
 SECRETS_PATH: Optional[str] = os.getenv("SECRETS_PATH", default=None)
