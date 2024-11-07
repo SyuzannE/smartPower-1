@@ -2,5 +2,4 @@ boto3==1.34.140
 pandas==2.2.2
 pytest
 pytz
-
 requests
