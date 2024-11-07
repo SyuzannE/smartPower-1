@@ -1,4 +1,4 @@
-# smartPower
+# SmartPower
 
 ## Overview
 
@@ -8,7 +8,6 @@ Currently this produces a x2 saving over GivEnergys best charging algorithm (Jun
 
 
 ## About the project
-
 The Octopus Agile tarrif provides half hour time windows that represent a different electrical price point, in pence per kwh.
 
 The GivEnergy app only allows you to select a single window of time to charge the battery, sometimes you may want to 
