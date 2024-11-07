@@ -1,7 +1,6 @@
 # import matplotlib.pyplot as plt
 # import numpy as np
 #
-#
 # def analyse_data(df_home_consumption, df_solar_production):
 #     # plot_multiple_kwh_day(all_days)
 #
