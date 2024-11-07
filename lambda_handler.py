@@ -10,6 +10,7 @@ from project.api.givenergy import GivEnergy
 from project.secrets import get_secret_or_env
 from project.api.sns_email import send_email
 
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
